@@ -4,6 +4,7 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # Shimano Container - Git Subtree Synchronization Script
 # Synchronizes source repositories (shimano-gdam-1, shimano-commons) into host
+# Includes automated Maven reactor quality gate and push retry logic
 # -----------------------------------------------------------------------------
 
 SOURCE_REPO="${SOURCE_REPO:-}"
@@ -33,9 +34,9 @@ fi
 
 # 2. Enforce strict branch whitelist
 case "$SOURCE_BRANCH" in
-  main|develop|stage|release/*)
+  main|develop|stage|release/*|feature/*)
     echo "✓ Valid branch: ${SOURCE_BRANCH}"
-    ;;\
+    ;;
   *)
     echo "❌ ERROR: Branch '${SOURCE_BRANCH}' is not whitelisted for subtree synchronization."
     exit 1
@@ -73,7 +74,7 @@ SUBTREE_PREFIX="${SOURCE_REPO}"
 git reset --hard HEAD
 git clean -fd
 
-# 6. Add or Pull Subtree with --squash
+# 6. Add or Pull Subtree with --squash locally
 echo ""
 if [ ! -d "$SUBTREE_PREFIX" ]; then
   echo "📦 Subtree directory '${SUBTREE_PREFIX}' does not exist. Adding subtree..."
@@ -85,7 +86,24 @@ else
   echo "✓ Subtree '${SUBTREE_PREFIX}' updated successfully."
 fi
 
-# 7. Check if there are new commits to push
+# 7. Maven Reactor Quality Gate (Verify POMs & modules BEFORE pushing)
+echo ""
+echo "================================================================="
+echo " Running Maven Reactor Quality Gate (mvn validate)"
+echo "================================================================="
+if command -v mvn >/dev/null 2>&1; then
+  if mvn -B validate; then
+    echo "✅ Maven reactor validation passed successfully."
+  else
+    echo "❌ ERROR: Maven reactor validation failed!"
+    echo "   Aborting push to prevent broken commits on ${SOURCE_BRANCH}."
+    exit 1
+  fi
+else
+  echo "⚠️ Maven not detected in PATH; skipping local validation."
+fi
+
+# 8. Check if there are new commits to push
 echo ""
 echo "Checking commit state against remote..."
 git fetch origin "$SOURCE_BRANCH" || true
@@ -100,16 +118,28 @@ if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
   exit 0
 fi
 
-# 8. Push changes safely to container repository
+# 9. Push changes safely to container repository with retry loop
 echo ""
 echo "Pushing changes to origin/${SOURCE_BRANCH}..."
-if git push origin "HEAD:${SOURCE_BRANCH}"; then
-  echo "✅ Changes pushed successfully."
-else
-  echo "⚠️ Direct push rejected. Fetching origin changes and merging..."
-  git pull origin "${SOURCE_BRANCH}" --no-edit
-  git push origin "HEAD:${SOURCE_BRANCH}"
-  echo "✅ Push succeeded on retry."
+MAX_RETRIES=3
+PUSHED=false
+
+for ((i=1; i<=MAX_RETRIES; i++)); do
+  if git push origin "HEAD:${SOURCE_BRANCH}"; then
+    echo "✅ Changes pushed successfully on attempt $i."
+    PUSHED=true
+    break
+  else
+    if [ "$i" -lt "$MAX_RETRIES" ]; then
+      echo "⚠️ Push rejected (attempt $i). Fetching origin and merging..."
+      git pull origin "${SOURCE_BRANCH}" --no-edit || true
+    fi
+  fi
+done
+
+if [ "$PUSHED" != true ]; then
+  echo "❌ Push failed after $MAX_RETRIES attempts."
+  exit 1
 fi
 
 echo ""

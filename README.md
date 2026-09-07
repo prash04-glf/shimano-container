@@ -29,19 +29,14 @@ This repository aggregates multiple source repositories (`shimano-gdam-1`, `shim
                       +----------------------------------------+
                                           │
                                           │ 1. Checkout matching container branch
-                                          │ 2. Run scripts/update_subtree.sh
-                                          ▼
-                      +────────────────────────────────────────+
-                      │ git subtree pull --squash              │
-                      │ -> shimano-container/shimano-gdam-1/   │
-                      │ -> shimano-container/shimano-commons/  │
-                      +────────────────────────────────────────+
-                                          │
-                                          │ 3. Run aggregated Maven validation
-                                          │ 4. Commit and push updated branch
+                                          │ 2. Pull subtree locally (--squash)
+                                          │ 3. Quality Gate: mvn validate (5-10s)
+                                          │ 4. Push to remote with retry loop
                                           ▼
                       +────────────────────────────────────────+
                       |   Adobe Cloud Manager Webhook Deploy   |
+                      |   Non-Prod -> develop                  |
+                      |   Production -> main                   |
                       +────────────────────────────────────────+
 ```
 
@@ -53,9 +48,9 @@ This repository aggregates multiple source repositories (`shimano-gdam-1`, `shim
 shimano-container/
 ├── .github/
 │   └── workflows/
-│       └── update-subtree.yml      # Synchronization workflow
+│       └── update-subtree.yml      # Synchronization workflow & concurrency queue
 ├── scripts/
-│   └── update_subtree.sh           # Reusable subtree sync script
+│   └── update_subtree.sh           # Reusable subtree sync script & quality gate
 ├── pom.xml                         # Aggregator root POM
 ├── README.md                       # Architecture & setup guide
 ├── shimano-commons/                # Git subtree for shimano-commons
@@ -64,39 +59,53 @@ shimano-container/
 
 ---
 
-## 3. Branch Mapping Strategy
+## 3. Branch Mapping & Promotion Rules
 
-| Source Branch | Container Branch | Target Subtree Directory |
-| :--- | :--- | :--- |
-| `develop` | `develop` | `shimano-gdam-1/` or `shimano-commons/` |
-| `main` | `main` | `shimano-gdam-1/` or `shimano-commons/` |
-| `stage` | `stage` | `shimano-gdam-1/` or `shimano-commons/` |
-| `release/*` | `release/*` | `shimano-gdam-1/` or `shimano-commons/` |
+| Source Branch | Container Branch | Target Subtree Directory | Cloud Manager Target |
+| :--- | :--- | :--- | :--- |
+| `develop` | `develop` | `shimano-gdam-1/` or `shimano-commons/` | Non-Production Pipeline |
+| `main` | `main` | `shimano-gdam-1/` or `shimano-commons/` | Production Pipeline |
+| `stage` | `stage` | `shimano-gdam-1/` or `shimano-commons/` | Stage Pipeline |
+| `release/*` | `release/*` | `shimano-gdam-1/` or `shimano-commons/` | Release Pipeline |
+
+### Golden Rules for Development & Releases
+1. **Source Code & Components**:
+   - Write code, components, templates, and clientlibs **only in the source repositories** (`shimano-gdam-1`, `shimano-commons`).
+   - Merge PRs into `develop` in source repos $\rightarrow$ container `develop` updates automatically.
+   - Merge Release PRs into `main` in source repos $\rightarrow$ container `main` updates automatically.
+2. **Container Infrastructure**:
+   - Workflows, sync scripts, and root `pom.xml` are edited directly in `shimano-container`.
+3. **No Internal Branch Merges**:
+   - Never merge `develop` $\leftrightarrow$ `main` inside the container repository. Each container branch mirrors the corresponding source branch.
 
 ---
 
-## 4. Git Subtree Strategy (`--squash`)
+## 4. Production Quality Gate (`mvn validate`)
 
-We use `git subtree pull --squash` because:
-- **Clean Git History**: Compresses dozens of feature commits from individual projects into a single clean subtree update commit in the container.
-- **Zero Submodule Overhead**: Developers and CI systems do not need `git submodule init / update`.
-- **Cloud Manager Compatibility**: Adobe Cloud Manager builds from a standard Git repository without external submodule dependencies.
+Before any subtree update is pushed to GitHub, the sync script executes a lightweight **Maven Reactor Validation**:
+```bash
+mvn -B validate
+```
+- **Execution Time**: ~5 to 10 seconds.
+- **What it checks**: Validates all aggregator POMs, child module paths, XML syntax, and prevents duplicate artifact IDs or missing module directories (e.g. missing dispatcher folders).
+- **Quality Gate Protection**: If validation fails, the script **aborts immediately without pushing**, preventing broken commits from reaching Adobe Cloud Manager or other developers.
 
 ---
 
-## 5. Setup & Authentication
+## 5. Concurrency & Race Condition Safety
 
-1. **GitHub Secret**: Add `CONTAINER_DISPATCH_TOKEN` in repository secrets (**Settings > Secrets and variables > Actions**).
-2. **Adobe Cloud Manager Webhook**: Under **Settings > Webhooks**, configure the webhook URL and secret from Adobe Cloud Manager.
+When multiple PRs are merged simultaneously across repositories:
+1. **GitHub Concurrency Queue**: `group: subtree-sync-${{ branch }}` with `cancel-in-progress: false` queues incoming events sequentially.
+2. **Push Retry Loop**: If a race condition occurs, `scripts/update_subtree.sh` retries pushing up to 3 times, merging remote changes non-interactively before retrying.
 
 ---
 
 ## 6. How to Add a New Subtree Repository Later
 
-To add a 3rd repository (e.g. `shimano-dealer`):
+To add a 3rd repository (e.g., `shimano-dealer`):
 1. Add `.github/workflows/trigger-container.yml` in `shimano-dealer` with secret `CONTAINER_DISPATCH_TOKEN`.
-2. Add `<module>shimano-dealer</module>` in `pom.xml`.
-3. Add initial subtree:
+2. Add `<module>shimano-dealer</module>` in root `pom.xml`.
+3. Add initial subtree on `develop` and `main`:
    ```bash
    git subtree add --prefix=shimano-dealer https://github.com/prash04-glf/shimano-dealer.git develop --squash -m "Add shimano-dealer subtree"
    ```
