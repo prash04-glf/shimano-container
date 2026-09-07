@@ -35,14 +35,14 @@ fi
 case "$SOURCE_BRANCH" in
   main|develop|stage|release/*)
     echo "✓ Valid branch: ${SOURCE_BRANCH}"
-    ;;
+    ;;\
   *)
     echo "❌ ERROR: Branch '${SOURCE_BRANCH}' is not whitelisted for subtree synchronization."
     exit 1
     ;;
 esac
 
-# 3. Configure Git author identity
+# 3. Configure Git author identity and settings
 git config --global user.name "github-actions[bot]"
 git config --global user.email "github-actions[bot]@users.noreply.github.com"
 git config --global pull.rebase false
@@ -68,6 +68,10 @@ fi
 echo "✓ Using verified remote branch: ${SOURCE_BRANCH}"
 
 SUBTREE_PREFIX="${SOURCE_REPO}"
+
+# Ensure working tree is clean before any git subtree operation
+git reset --hard HEAD
+git clean -fd
 
 # 6. Add or Pull Subtree with --squash
 echo ""

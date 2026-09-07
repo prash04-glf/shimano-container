@@ -45,6 +45,11 @@ jobs:
           token: ${{ secrets.CONTAINER_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Clean Working Tree
+        run: |
+          git reset --hard HEAD
+          git clean -fd
+
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
@@ -59,8 +64,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
           ORG_NAME: prash04-glf
         run: |
-          chmod +x scripts/update_subtree.sh
-          ./scripts/update_subtree.sh
+          bash scripts/update_subtree.sh
 
       - name: Verify Aggregated Maven Build
         run: |
