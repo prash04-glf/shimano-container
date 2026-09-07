@@ -122,3 +122,43 @@ A ClientLib will consist of the following files and directories:
 The project comes with the auto-public repository configured. To setup the repository in your Maven settings, refer to:
 
     http://helpx.adobe.com/experience-manager/kb/SetUpTheAdobeMavenRepository.html
+
+---
+
+## CI/CD Pipeline & Git Subtree Integration
+
+This repository is integrated into the multi-repo aggregator container [`shimano-container`](https://github.com/prash04-glf/shimano-container) using GitHub Actions and Git Subtree.
+
+```
++---------------------------+        Push / Merge (develop / main)
+|  shimano-commons          | -------------------------------------------+
++---------------------------+                                            |
+              |                                                          v
+              | .github/workflows/trigger-container.yml   +-----------------------------+
+              +-----------------------------------------> | repository_dispatch         |
+                                                          +-----------------------------+
+                                                                         |
+                                                                         v
+                                                          +-----------------------------+
+                                                          |  shimano-container          |
+                                                          |  .github/workflows/         |
+                                                          |  update-subtree.yml         |
+                                                          |  (git subtree pull --squash)|
+                                                          +-----------------------------+
+```
+
+### Required GitHub Secret
+To enable automatic triggering of the aggregator pipeline in `shimano-container`, you must configure a GitHub Personal Access Token (PAT):
+1. Navigate to **GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)** (or Fine-Grained Tokens).
+2. Generate a token with `repo` scope (or Read/Write to `shimano-container`).
+3. Add it as an Actions secret in this repository:
+   - Name: `CONTAINER_DISPATCH_TOKEN`
+   - Location: **Repository Settings > Secrets and variables > Actions > New repository secret**.
+
+### Branch Mapping
+| `shimano-commons` Branch | `shimano-container` Target Branch | Container Target Directory |
+|:-------------------------|:-----------------------------------|:---------------------------|
+| `develop`                | `develop`                          | `shimano-commons/`         |
+| `main`                   | `main`                             | `shimano-commons/`         |
+| `stage`                  | `stage`                            | `shimano-commons/`         |
+| `release/**`             | matching release branch            | `shimano-commons/`         |
