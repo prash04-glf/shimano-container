@@ -1,0 +1,7 @@
+{
+    "scripts": [
+        "create path (sling:OrderedFolder) /content/dam/shimano-commons",
+        "create path (nt:unstructured) /content/dam/shimano-commons/jcr:content",
+        "set properties on /content/dam/shimano-commons/jcr:content\n  set cq:conf{String} to /conf/shimano-commons\n  set jcr:title{String} to \"Shimano Commons\"\nend"
+    ]
+}

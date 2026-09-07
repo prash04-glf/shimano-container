@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspaceFilter version="1.0">
+    <filter root="/apps/shimano-commons/clientlibs"/>
+    <filter root="/apps/shimano-commons/components"/>
+    <filter root="/apps/shimano-commons/i18n"/>
+    <filter root="/apps/msm/shimano-commons_blueprint" mode="merge"/>
+</workspaceFilter>
