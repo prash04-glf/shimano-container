@@ -1,0 +1,6 @@
+{
+  "mobile.resourceTypes": [
+    "shimano-gdam-1/components/page"
+  ],
+  "README": "Indicate which page resource types should display the mobile emulators."
+}

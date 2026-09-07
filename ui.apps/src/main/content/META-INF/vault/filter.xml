@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspaceFilter version="1.0">
+    <filter root="/apps/shimano-gdam-1/clientlibs"/>
+    <filter root="/apps/shimano-gdam-1/components"/>
+    <filter root="/apps/shimano-gdam-1/i18n"/>
+    <filter root="/apps/msm/shimano-gdam-1_blueprint" mode="merge"/>
+</workspaceFilter>

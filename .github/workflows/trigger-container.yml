@@ -1,0 +1,62 @@
+name: Trigger Shimano Container Subtree Sync
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - stage
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to sync in container'
+        required: true
+        default: 'develop'
+
+jobs:
+  trigger-container-sync:
+    name: Dispatch Subtree Sync to shimano-container
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate GitHub Token
+        env:
+          CONTAINER_DISPATCH_TOKEN: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$CONTAINER_DISPATCH_TOKEN" ]; then
+            echo "::error ::Secret 'CONTAINER_DISPATCH_TOKEN' is not configured in repository secrets."
+            echo "Please create a GitHub Personal Access Token (PAT) with 'repo' scope and add it as 'CONTAINER_DISPATCH_TOKEN' under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Determine Branch
+        id: branch-info
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "branch=${{ github.event.inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Container Repository Dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
+          repository: prash04-glf/shimano-container
+          event-type: subtree_sync
+          client-payload: >-
+            {
+              "source_repo": "shimano-gdam-1",
+              "source_branch": "${{ steps.branch-info.outputs.branch }}",
+              "commit_sha": "${{ github.sha }}",
+              "actor": "${{ github.actor }}",
+              "ref": "${{ github.ref }}"
+            }
+
+      - name: Report Dispatch Status
+        run: |
+          echo "Successfully dispatched subtree sync event to prash04-glf/shimano-container"
+          echo "Source Repository: shimano-gdam-1"
+          echo "Source Branch: ${{ steps.branch-info.outputs.branch }}"
+          echo "Commit SHA: ${{ github.sha }}"
