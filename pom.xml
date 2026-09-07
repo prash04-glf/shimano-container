@@ -51,8 +51,6 @@
             
     <module>dispatcher.ams</module>
             
-    <module>dispatcher.cloud</module>
-            
     <module>ui.tests</module>
           
     <module>ui.frontend.react.forms.af</module>
