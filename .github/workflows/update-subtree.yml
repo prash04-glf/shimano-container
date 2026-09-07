@@ -1,0 +1,68 @@
+﻿name: Synchronize Subtree in Container
+
+on:
+  repository_dispatch:
+    types: [subtree_sync]
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source Repository Name'
+        required: true
+        type: choice
+        options:
+          - shimano-gdam-1
+          - shimano-commons
+      source_branch:
+        description: 'Source Branch to Sync'
+        required: true
+        default: 'develop'
+
+concurrency:
+  group: subtree-sync-${{ github.event.client_payload.source_branch || github.event.inputs.source_branch }}
+  cancel-in-progress: false
+
+jobs:
+  sync-subtree:
+    name: Subtree Sync & Maven Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve Parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SOURCE_REPO=${{ github.event.inputs.source_repo }}" >> "$GITHUB_ENV"
+            echo "SOURCE_BRANCH=${{ github.event.inputs.source_branch }}" >> "$GITHUB_ENV"
+          else
+            echo "SOURCE_REPO=${{ github.event.client_payload.source_repo }}" >> "$GITHUB_ENV"
+            echo "SOURCE_BRANCH=${{ github.event.client_payload.source_branch }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Checkout Container Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.CONTAINER_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Execute Subtree Update Script
+        env:
+          SOURCE_REPO: ${{ env.SOURCE_REPO }}
+          SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
+          GITHUB_TOKEN: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
+          ORG_NAME: prash04-glf
+        run: |
+          chmod +x scripts/update_subtree.sh
+          ./scripts/update_subtree.sh
+
+      - name: Verify Aggregated Maven Build
+        run: |
+          echo "Verifying Maven compilation on updated container repository..."
+          mvn -B clean compile -DskipTests
