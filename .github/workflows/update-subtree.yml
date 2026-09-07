@@ -68,5 +68,5 @@ jobs:
 
       - name: Verify Aggregated Maven Build
         run: |
-          echo "Verifying Maven compilation on updated container repository..."
-          mvn -B clean compile -DskipTests
+          echo "Verifying Maven packaging on updated container repository..."
+          mvn -B clean package -DskipTests
