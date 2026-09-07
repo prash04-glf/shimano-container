@@ -147,7 +147,7 @@ This repository is integrated into the multi-repo aggregator container [`shimano
                                                           +-----------------------------+
 ```
 
-### Required GitHub Secret
+### Required GitHub Secret Keys
 To enable automatic triggering of the aggregator pipeline in `shimano-container`, you must configure a GitHub Personal Access Token (PAT):
 1. Navigate to **GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)** (or Fine-Grained Tokens).
 2. Generate a token with `repo` scope (or Read/Write to `shimano-container`).
