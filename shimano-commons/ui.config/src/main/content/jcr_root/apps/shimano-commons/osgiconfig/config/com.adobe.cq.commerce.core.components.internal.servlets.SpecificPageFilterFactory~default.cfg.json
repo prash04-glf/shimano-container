@@ -1,0 +1,3 @@
+{
+  "sling.filter.pattern": "/content/shimano-commons/.*?/(category-page|product-page)"
+}
