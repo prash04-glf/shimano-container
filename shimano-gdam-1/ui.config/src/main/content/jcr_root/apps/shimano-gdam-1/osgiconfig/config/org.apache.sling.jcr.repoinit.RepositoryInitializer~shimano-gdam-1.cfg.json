@@ -1,0 +1,7 @@
+{
+    "scripts": [
+        "create path (sling:OrderedFolder) /content/dam/shimano-gdam-1",
+        "create path (nt:unstructured) /content/dam/shimano-gdam-1/jcr:content",
+        "set properties on /content/dam/shimano-gdam-1/jcr:content\n  set cq:conf{String} to /conf/shimano-gdam-1\n  set jcr:title{String} to \"Shimano GDAM 1\"\nend"
+    ]
+}

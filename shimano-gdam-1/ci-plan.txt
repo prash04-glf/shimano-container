@@ -1,0 +1,1934 @@
+Yes. Since you want to reproduce the **same repository → container → subtree → CI/CD pattern** for another GitHub project, I’d give the coding agent a prompt that is explicit about the architecture, but **does not blindly copy the Bitbucket implementation**.
+
+For a 2-repository PoC, I would structure it as:
+
+```text
+GitHub Repository 1
+        │
+        │ merge to develop/main
+        ▼
+GitHub Actions
+        │
+        │ workflow_dispatch / repository_dispatch
+        ▼
+GitHub Container Repository
+        │
+        │ git subtree pull
+        ▼
+container/<repo1>
+        │
+        ▼
+Maven build / tests / deployment
+sonnet bitbucket-pepelines.yml
+
+```
+definitions:
+  steps:
+    - step: &trigger-container-pipeline
+        name: Trigger container pipeline on $BITBUCKET_BRANCH branch
+        script:
+          - pipe: atlassian/trigger-pipeline:5.10.1
+            variables:
+              BITBUCKET_ACCESS_TOKEN: $BITBUCKET_WORKSPACE_ACCESS_TOKEN
+              REPOSITORY: 'definity-container'
+              REF_TYPE: 'branch'
+              REF_NAME: $BITBUCKET_BRANCH
+              CUSTOM_PIPELINE_NAME: 'trigger-submodule-update'
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "SOURCE_REPO",
+                  "value": "$BITBUCKET_REPO_SLUG"
+                }, {
+                  "key": "SOURCE_BRANCH",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+              WAIT: 'true'
+
+    - step: &veracode-scan
+        name: Veracode Scan
+        image: veracode/pipeline-scan:latest
+        script:
+          - |
+            echo "Zipping python files for Veracode"
+            find . -name "*.py" -print | zip file.zip -@ || echo "no python files found"
+            if [ -f file.zip ]; then
+              java -jar /opt/veracode/pipeline-scan.jar \
+                -aid 'SDP_File Based Ingestion Framework' \
+                -vid ${VERACODE_ID} \
+                -vkey ${VERACODE_TOKEN} \
+                --file file.zip \
+                -V true \
+                -so true \
+                -jo true \
+                -jd true \
+                --fail_on_severity="Very High, High"
+            else
+              echo "No Python files found. Skipping Veracode scan."
+            fi
+
+    - step: &sonar-scan
+        name: SonarQube Scan
+        image: sonarsource/sonar-scanner-cli:10.0
+        runs-on:
+          - aws.k8s
+          - self.hosted
+          - linux
+        script:
+          - |
+            sonar-scanner \
+              -Dsonar.projectKey=definity-aem-sonnet \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=${SONARCUBE_SERVER} \
+              -Dsonar.login=${SONARCUBE_TOKEN} \
+              -Dsonar.exclusions=**/*.java \
+              -Dsonar.qualitygate.wait=false
+
+pipelines:
+  branches:
+    develop:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+    dev-next-1.1:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+    stage:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+    
+    stage-3.0:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline  
+
+    release/prod-sonnet-1.0:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+    main:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+
+```
+
+Commons:
+
+```
+definitions:
+  steps:
+    - step: &trigger-container-pipeline
+        name: Trigger container pipeline on $BITBUCKET_BRANCH branch
+        script:
+          - pipe: atlassian/trigger-pipeline:5.10.1
+            variables:
+              BITBUCKET_ACCESS_TOKEN: $BITBUCKET_WORKSPACE_ACCESS_TOKEN
+              REPOSITORY: 'definity-container'
+              REF_TYPE: 'branch'
+              REF_NAME: $BITBUCKET_BRANCH
+              CUSTOM_PIPELINE_NAME: 'trigger-submodule-update'
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "SOURCE_REPO",
+                  "value": "$BITBUCKET_REPO_SLUG"
+                }, {
+                  "key": "SOURCE_BRANCH",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+              WAIT: 'true'
+pipelines:
+  branches:
+    develop:
+      - step: *trigger-container-pipeline
+    main:
+      - step: *trigger-container-pipeline
+    stage:
+      - step: *trigger-container-pipeline
+    stage-3.0:
+      - step: *trigger-container-pipeline
+    release/prod-familyins-1.0:
+      - step: *trigger-container-pipeline
+    release/prod-sonnet-1.0:
+      - step: *trigger-container-pipeline
+```
+
+container: bitbucket-pipelines.yml
+
+```
+definitions:
+  steps:
+    - step: &trigger-container-pipeline
+        name: Trigger container pipeline on $BITBUCKET_BRANCH branch
+        script:
+          - pipe: atlassian/trigger-pipeline:5.10.1
+            variables:
+              BITBUCKET_ACCESS_TOKEN: $BITBUCKET_WORKSPACE_ACCESS_TOKEN
+              REPOSITORY: 'definity-container'
+              REF_TYPE: 'branch'
+              REF_NAME: $BITBUCKET_BRANCH
+              CUSTOM_PIPELINE_NAME: 'trigger-submodule-update'
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "SOURCE_REPO",
+                  "value": "$BITBUCKET_REPO_SLUG"
+                }, {
+                  "key": "SOURCE_BRANCH",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+              WAIT: 'true'
+
+    - step: &veracode-scan
+        name: Veracode Scan
+        image: veracode/pipeline-scan:latest
+        script:
+          - |
+            echo "Zipping python files for Veracode"
+            find . -name "*.py" -print | zip file.zip -@ || echo "no python files found"
+            if [ -f file.zip ]; then
+              java -jar /opt/veracode/pipeline-scan.jar \
+                -aid 'SDP_File Based Ingestion Framework' \
+                -vid ${VERACODE_ID} \
+                -vkey ${VERACODE_TOKEN} \
+                --file file.zip \
+                -V true \
+                -so true \
+                -jo true \
+                -jd true \
+                --fail_on_severity="Very High, High"
+            else
+              echo "No Python files found. Skipping Veracode scan."
+            fi
+
+    - step: &sonar-scan
+        name: SonarQube Scan
+        image: sonarsource/sonar-scanner-cli:10.0
+        runs-on:
+          - aws.k8s
+          - self.hosted
+          - linux
+        script:
+          - |
+            sonar-scanner \
+              -Dsonar.projectKey=definity-aem-petlineinsurance \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=${SONARCUBE_SERVER} \
+              -Dsonar.login=${SONARCUBE_TOKEN} \
+              -Dsonar.exclusions=**/*.java \
+              -Dsonar.qualitygate.wait=false
+
+pipelines:
+  branches:
+    develop:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+    stage:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+
+    main:
+      - step: *veracode-scan
+      - step: *sonar-scan
+      - step: *trigger-container-pipeline
+```
+
+conatiner update\_submodule.sh
+
+```
+#!/bin/bash
+set -e
+
+#--------------------------------------------------
+# Subtree Sync Script
+# Syncs subtree repositories into host repo
+#--------------------------------------------------
+
+# Only run on main, develop, or stage branches
+if [[ "$SOURCE_BRANCH" != "main" && "$SOURCE_BRANCH" != "develop" && "$SOURCE_BRANCH" != "stage" && "$SOURCE_BRANCH" != "release/prod-familyins-1.0" ]]; then
+  echo "❌ Pipeline will only run on main, develop, stage and release/prod-familyins-1.0 branches."
+  echo "   Current branch: $SOURCE_BRANCH"
+  exit 1
+fi
+
+echo "✓ Running on branch: $SOURCE_BRANCH"
+
+#--------------------------------------------------
+# Install git-subtree
+#--------------------------------------------------
+echo "Installing git-subtree..."
+if ! curl -fsSL -o /usr/local/bin/git-subtree https://raw.githubusercontent.com/git/git/master/contrib/subtree/git-subtree.sh; then
+  echo "❌ Failed to download git-subtree"
+  exit 1
+fi
+chmod +x /usr/local/bin/git-subtree
+echo "✓ git-subtree installed"
+
+#--------------------------------------------------
+# Configure git
+#--------------------------------------------------
+git config --global user.email "buildmaster-definity@economical.com"
+git config --global user.name "buildmaster-definity"
+
+# Configure rebase to always prefer our changes in conflicts
+git config --global pull.rebase true
+git config --global rebase.autoStash true
+
+#--------------------------------------------------
+# Configure authentication
+#--------------------------------------------------
+if [ -z "$BITBUCKET_WORKSPACE_ACCESS_TOKEN" ]; then
+  echo "❌ ERROR: BITBUCKET_WORKSPACE_ACCESS_TOKEN not set"
+  exit 1
+fi
+
+git config --global url."https://x-token-auth:$BITBUCKET_WORKSPACE_ACCESS_TOKEN@bitbucket.org/".insteadOf "https://bitbucket.org/"
+echo "✓ Git authentication configured"
+
+#--------------------------------------------------
+# Validate required variables
+#--------------------------------------------------
+if [ -z "$SOURCE_REPO" ]; then
+  echo "❌ ERROR: SOURCE_REPO not set"
+  exit 1
+fi
+
+#--------------------------------------------------
+# Prepare repository state
+#--------------------------------------------------
+echo "Current git state:"
+git status --short
+
+# Clean working directory completely (CI/CD doesn't need stash)
+echo ""
+echo "Cleaning working directory..."
+git reset --hard HEAD
+git clean -fd
+
+echo ""
+echo "Fetching all branches from origin..."
+git fetch origin
+
+# Store the remote commit before checkout
+REMOTE_COMMIT_BEFORE=$(git rev-parse FETCH_HEAD)
+echo "Remote $SOURCE_BRANCH at: $(git rev-parse --short FETCH_HEAD)"
+
+echo ""
+echo "Checking out $SOURCE_BRANCH..."
+
+# Always create/recreate branch from remote
+git checkout -B "$SOURCE_BRANCH" FETCH_HEAD
+
+echo "✓ Checked out $SOURCE_BRANCH at $(git rev-parse --short HEAD)"
+
+#--------------------------------------------------
+# Subtree configuration
+#--------------------------------------------------
+SUBTREE_PREFIX="$SOURCE_REPO"
+SUBTREE_REMOTE="https://bitbucket.org/economical/$SOURCE_REPO.git"
+
+echo ""
+echo "Subtree: $SUBTREE_REMOTE"
+echo "Prefix:  $SUBTREE_PREFIX"
+
+#--------------------------------------------------
+# Determine subtree branch to pull
+#--------------------------------------------------
+SUBTREE_BRANCH="$SOURCE_BRANCH"
+
+echo ""
+echo "Checking if subtree branch '$SUBTREE_BRANCH' exists..."
+if ! git ls-remote --exit-code --heads "$SUBTREE_REMOTE" "$SUBTREE_BRANCH" > /dev/null 2>&1; then
+  echo "⚠️  Subtree branch '$SUBTREE_BRANCH' does not exist"
+  echo "   Falling back to 'main'"
+  SUBTREE_BRANCH="main"
+
+  # Verify main exists
+  if ! git ls-remote --exit-code --heads "$SUBTREE_REMOTE" "$SUBTREE_BRANCH" > /dev/null 2>&1; then
+    echo "❌ ERROR: Neither '$SOURCE_BRANCH' nor 'main' exists in subtree repo"
+    exit 1
+  fi
+fi
+
+echo "✓ Using subtree branch: $SUBTREE_BRANCH"
+
+#--------------------------------------------------
+# Check if subtree was added with --squash
+#--------------------------------------------------
+USES_SQUASH=false
+if [ -d "$SUBTREE_PREFIX" ]; then
+ 
+  #fetch full git history to detect squash for definity-aem-broker
+  git fetch --unshallow 2>/dev/null || git fetch depth=214748647 2>/dev/null || true
+
+  echo ""
+  echo "Checking how subtree was originally added..."
+
+  # Look for squash commits in the history
+  if git log --all --grep="git-subtree-dir: $SUBTREE_PREFIX" --oneline 2>/dev/null | head -5 | grep -qi "squash"; then
+    USES_SQUASH=true
+    echo "✓ Subtree was added with --squash"
+  else
+    echo "✓ Subtree was added without --squash"
+  fi
+fi
+
+#--------------------------------------------------
+# Sync subtree
+#--------------------------------------------------
+echo ""
+if [ ! -d "$SUBTREE_PREFIX" ]; then
+  echo "📦 Subtree folder does not exist. Adding it..."
+  git subtree add --prefix="$SUBTREE_PREFIX" "$SUBTREE_REMOTE" "$SUBTREE_BRANCH" --squash -m "Add $SOURCE_REPO subtree from $SUBTREE_BRANCH"
+  echo "✓ Subtree added successfully"
+else
+  echo "📦 Subtree folder exists. Pulling latest changes..."
+
+  # Fetch the latest changes
+  echo "Fetching from $SUBTREE_REMOTE ($SUBTREE_BRANCH)..."
+  git fetch "$SUBTREE_REMOTE" "$SUBTREE_BRANCH"
+
+  # Get the current commit of the subtree remote
+  REMOTE_COMMIT=$(git rev-parse FETCH_HEAD)
+  echo "Remote subtree at: $REMOTE_COMMIT"
+
+  # Pull with or without squash based on how it was originally added
+  # Pull with or without squash based on how it was originally added
+  if [ "$USES_SQUASH" = true ]; then
+    echo "Pulling with --squash..."
+    git subtree pull --prefix="$SUBTREE_PREFIX" "$SUBTREE_REMOTE" "$SUBTREE_BRANCH" --squash -m "Update $SOURCE_REPO subtree from $SUBTREE_BRANCH"
+  else
+    echo "Pulling without --squash..."
+    git subtree pull --prefix="$SUBTREE_PREFIX" "$SUBTREE_REMOTE" "$SUBTREE_BRANCH" -m "Update $SOURCE_REPO subtree from $SUBTREE_BRANCH"
+  fi
+
+  echo "✓ Subtree updated successfully"
+fi
+
+#--------------------------------------------------
+# Check if there are changes to push
+#--------------------------------------------------
+echo ""
+echo "Checking for changes to push..."
+
+# Fetch latest remote state
+echo "Fetching latest remote state..."
+git fetch origin "$SOURCE_BRANCH"
+
+# Compare commits
+LOCAL_COMMIT=$(git rev-parse HEAD)
+REMOTE_COMMIT_AFTER=$(git rev-parse FETCH_HEAD)
+
+echo "Commit comparison:"
+echo "  Local:        $LOCAL_COMMIT"
+echo "  Remote After: $REMOTE_COMMIT_AFTER"
+echo "  Remote Before: $REMOTE_COMMIT_BEFORE"
+
+# Check if already up to date
+if [ "$LOCAL_COMMIT" = "$REMOTE_COMMIT_AFTER" ]; then
+  echo "ℹ️  No changes to push - already up to date"
+  exit 0
+fi
+
+# Check if we can fast-forward (remote hasn't changed)
+if [ "$REMOTE_COMMIT_BEFORE" = "$REMOTE_COMMIT_AFTER" ]; then
+  echo "✓ Remote unchanged - safe to push"
+else
+  echo "⚠️  Remote has changed during execution"
+  echo "   Using force-with-lease strategy"
+fi
+
+#--------------------------------------------------
+# Push changes with retry logic
+#--------------------------------------------------
+echo ""
+echo "Pushing changes to origin/$SOURCE_BRANCH..."
+
+# Try 1: Normal push (works if fast-forward)
+if git push origin "HEAD:$SOURCE_BRANCH" 2>/dev/null; then
+  echo "✓ Normal push successful"
+elif git push --force-with-lease="$SOURCE_BRANCH:$REMOTE_COMMIT_BEFORE" origin "HEAD:$SOURCE_BRANCH" 2>/dev/null; then
+  # Try 2: Force-with-lease using our initial fetch (prevents overwriting others' work)
+  echo "✓ Force-with-lease push successful"
+else
+  # Try 3: Fetch again and retry with updated lease
+  echo "⚠️  Push failed, fetching and retrying..."
+  git fetch origin "$SOURCE_BRANCH"
+  LATEST_REMOTE=$(git rev-parse FETCH_HEAD)
+
+  if git push --force-with-lease="$SOURCE_BRANCH:$LATEST_REMOTE" origin "HEAD:$SOURCE_BRANCH"; then
+    echo "✓ Retry with updated lease successful"
+  else
+    echo "❌ All push attempts failed"
+    echo "This may indicate a race condition with another pipeline run"
+    exit 1
+  fi
+fi
+
+echo ""
+echo "✅ Subtree sync for branch '$SOURCE_BRANCH' completed successfully"
+echo "   Subtree: $SOURCE_REPO ($SUBTREE_BRANCH)"
+echo "   Local:  $(git rev-parse --short HEAD)"
+```
+
+
+
+container: pom
+
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.definity.container</groupId>
+  <artifactId>definity-container</artifactId>
+  <packaging>pom</packaging>
+  <version>1.0.0-SNAPSHOT</version>
+  <name>Definity Container</name>
+  <description>Definity Container for submodules</description>
+  <modules>
+    <module>definity-commons</module>
+    <module>definity-aem</module>
+    <module>definity-aem-broker</module>
+    <module>definity-aem-familyins</module>
+    <module>definity-aem-sonnet</module>
+  </modules>
+</project>
+```
+
+container readme:
+
+```
+# Digital CMS Platform - Container
+
+This repository contains the Bitbucket pipeline for the Digital CMS Platform. It is responsible for updating and managing the remote repos folder through git subtree concept.
+Reference: https://gist.github.com/SKempin/b7857a6ff6bddb05717cc17a44091202
+
+## Pipeline Diagram
+
+![Pipeline Diagram](aem-pipeline-diagram.png)
+
+## Pipeline Steps
+
+The pipeline consists of two main steps:
+
+1.  **Update Submodule:** This step updates the specified submodule within the container. It uses `git subtree` to pull the latest changes from the submodule's repository.
+
+2.  **Veracode Scan:** This step performs a security scan on the codebase using Veracode. It checks for vulnerabilities and will fail the pipeline if any high-severity issues are found.
+
+### Branch Condition
+
+The pipeline is configured to run only when the source branch is either `develop` or `main`. This ensures that only code from these branches is processed.
+
+## Supported Submodules
+
+This pipeline is designed to work with the following submodules:
+
+*   `definity-aem-broker`
+*   `definity-aem`
+*   `definity-commons`
+
+The pipeline is configured to map the branches as follows:
+
+*   The `develop` branch of the submodule will be pulled into the `develop` branch of this repository.
+*   The `main` branch of the submodule will be pulled into the `main` branch of this repository.
+
+## Triggering the Pipeline
+
+**This pipeline should not be triggered manually.** It is designed to be triggered automatically by changes in the submodule repositories.
+
+## Webhook configuration to trigger deployment to Adobe Cloud manager
+
+In order to setup, limited permissions are granted and we can view it under Repository settings > Webhook section
+
+Webhook URL and Secrets are shared by Jordan Dere <jdere@deloitte.ca>
+
+Reference Doc: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/using-cloud-manager/managing-code/external-repositories#configure-webhook
+
+In future, if webhook secrets needs to be updated then a new one can be generated by someone who has access to the Adobe Cloud Manager.
+
+
+```
+
+
+
+this is my github CI setup. I need to make similar setup for another project in github.
+
+can you create sample prompts to create the setup using agents like claude, github co pilot, antigravity etc coding agent.,
+
+consider we have 2 repository for now. 
+
+
+https://github.com/prash04-glf/shimano-gdam-1
+
+https://github.com/prash04-glf/shimano-commons
+
+need to create container repo for this. for which the branch to be synched with worflow. we can start with implementation, may be we can add vericode, sonar later 
+
+
+
+
+
+```
+
+Assuming the two repositories are:
+
+```text
+project1
+project-container
+```
+
+and eventually you may add:
+
+```text
+project2
+project3
+...
+```
+
+Here are **copy/paste prompts** you can give to Claude Code, GitHub Copilot coding agent, Antigravity, Cursor, etc.
+
+---
+
+# 1. Best overall prompt — use this first
+
+This is the prompt I'd recommend using with any coding agent.
+
+Act as a senior DevOps engineer and GitHub Actions engineer.
+
+I have an existing Bitbucket-based repository architecture that I want to reproduce using GitHub Actions.
+
+The goal is to create a small proof of concept with TWO GitHub repositories:
+
+1. `project1`
+
+   * Independent application/source repository.
+   * Developers work directly in this repository.
+   * It contains the actual application code.
+   * Branches:
+
+     * `develop`
+     * `main`
+
+2. `project-container`
+
+   * Parent/container/deployment repository.
+   * It aggregates the source repository using Git subtree.
+   * It contains the Maven parent POM.
+   * It is ultimately the repository that will be built/deployed.
+   * Branches:
+
+     * `develop`
+     * `main`
+
+Desired architecture:
+
+```
+project1
+   |
+   | merge to develop
+   | or
+   | merge to main
+   |
+   v
+GitHub Actions in project1
+   |
+   | trigger container workflow
+   v
+project-container
+   |
+   | git subtree pull
+   v
+project-container/project1
+   |
+   v
+Maven build/test/package
+```
+
+The important requirement is:
+
+WHEN A COMMIT IS MERGED INTO `project1/develop`,
+the corresponding `project-container/develop` branch must automatically be updated so that:
+
+```
+project-container/project1
+```
+
+contains the latest contents of:
+
+```
+project1/develop
+```
+
+Similarly:
+
+WHEN A COMMIT IS MERGED INTO `project1/main`,
+the corresponding `project-container/main` branch must automatically be updated so that:
+
+```
+project-container/project1
+```
+
+contains the latest contents of:
+
+```
+project1/main
+```
+
+Do NOT use Git submodules.
+
+Use Git subtree.
+
+Do NOT create a separate repository for every module for this PoC.
+
+Do NOT introduce unnecessary third-party CI/CD products.
+
+Use GitHub Actions.
+
+---
+
+## REQUIREMENTS
+
+Create all required GitHub Actions workflows, scripts, documentation and Maven configuration.
+
+The solution must:
+
+1. Detect pushes/merges to:
+
+   * develop
+   * main
+
+2. Trigger the container repository workflow.
+
+3. Pass at least these parameters from the source repository to the container workflow:
+
+   * SOURCE_REPO
+   * SOURCE_BRANCH
+
+4. The container workflow must:
+
+   * checkout the correct branch
+   * authenticate to GitHub
+   * identify the source repository
+   * identify the source branch
+   * update the subtree
+   * commit the subtree change
+   * push the updated container branch
+
+5. The subtree must be stored under:
+
+   project1/
+
+6. Branch mapping must be:
+
+   project1/develop
+   ->
+   project-container/develop
+
+   project1/main
+   ->
+   project-container/main
+
+7. The solution must be idempotent.
+
+If the source repository has not changed, running the workflow again must not create unnecessary commits.
+
+8. Avoid force-pushing unless there is a compelling technical reason.
+
+Prefer normal push with proper race-condition handling.
+
+9. Do not overwrite unrelated changes in the container repository.
+
+10. Handle concurrent workflow executions safely.
+
+11. Do not expose GitHub tokens in logs.
+
+12. Use the minimum GitHub permissions required.
+
+---
+
+## GITHUB AUTHENTICATION
+
+Use GitHub-native authentication where possible.
+
+Evaluate whether the default:
+
+```
+GITHUB_TOKEN
+```
+
+is sufficient.
+
+If cross-repository workflow triggering or write access requires a GitHub App, PAT, fine-grained PAT, or another credential, explain why and implement the safest option.
+
+Do NOT hard-code credentials.
+
+Use GitHub Actions secrets or variables where required.
+
+Clearly document:
+
+* required secrets
+* required permissions
+* where each secret is configured
+* what repository access it needs
+
+---
+
+## SOURCE REPOSITORY WORKFLOW
+
+Create something similar to:
+
+```
+.github/workflows/trigger-container.yml
+```
+
+The workflow should run when code is pushed to:
+
+```
+develop
+main
+```
+
+For a merge into develop, it should trigger the container workflow with:
+
+```
+SOURCE_REPO=project1
+SOURCE_BRANCH=develop
+```
+
+For a merge into main:
+
+```
+SOURCE_REPO=project1
+SOURCE_BRANCH=main
+```
+
+Do not rely on developers manually triggering the container workflow.
+
+---
+
+## CONTAINER REPOSITORY WORKFLOW
+
+Create something similar to:
+
+```
+.github/workflows/update-subtree.yml
+```
+
+The workflow should be triggerable from the source repository.
+
+Prefer a GitHub-native mechanism such as:
+
+```
+workflow_dispatch
+```
+
+or:
+
+```
+repository_dispatch
+```
+
+or another appropriate GitHub Actions mechanism.
+
+Choose the mechanism that is technically safest and explain the choice.
+
+The workflow must receive:
+
+```
+SOURCE_REPO
+SOURCE_BRANCH
+```
+
+It must then update:
+
+```
+project1/
+```
+
+using Git subtree.
+
+Equivalent logical operation:
+
+```
+git subtree pull \
+  --prefix=project1 \
+  <source-repository> \
+  <source-branch>
+```
+
+Use `--squash` if you determine that it is the best approach for this architecture.
+
+Explain the tradeoff between:
+
+```
+git subtree pull --squash
+```
+
+and:
+
+```
+git subtree pull
+```
+
+and choose one.
+
+---
+
+## SCRIPT
+
+Create a reusable script such as:
+
+```
+scripts/update_subtree.sh
+```
+
+The script should:
+
+1. Validate SOURCE_REPO.
+2. Validate SOURCE_BRANCH.
+3. Validate that only supported branches are processed.
+4. Configure Git identity.
+5. Configure authentication.
+6. Fetch the source repository.
+7. Verify that the requested source branch exists.
+8. Determine the correct subtree prefix.
+9. Add the subtree if it does not exist.
+10. Pull/update the subtree if it already exists.
+11. Detect whether there are actual changes.
+12. Commit only when necessary.
+13. Push the correct container branch.
+14. Handle concurrent updates safely.
+15. Fail clearly when something goes wrong.
+
+Use:
+
+```
+set -euo pipefail
+```
+
+where appropriate.
+
+Do not silently ignore important failures.
+
+---
+
+## BRANCH SAFETY
+
+The script must never accidentally update:
+
+```
+main
+```
+
+when the source branch is:
+
+```
+develop
+```
+
+and vice versa.
+
+Explicitly validate:
+
+```
+SOURCE_BRANCH=develop
+    -> container branch develop
+
+SOURCE_BRANCH=main
+    -> container branch main
+```
+
+For this PoC, reject unsupported source branches.
+
+---
+
+## MAVEN
+
+Create a minimal Maven parent POM in `project-container`.
+
+Example conceptual structure:
+
+```
+project-container/
+├── pom.xml
+├── project1/
+│   └── ...
+├── scripts/
+│   └── update_subtree.sh
+└── .github/
+    └── workflows/
+        └── update-subtree.yml
+```
+
+The POM should declare:
+
+```
+<packaging>pom</packaging>
+```
+
+and:
+
+```
+<module>project1</module>
+```
+
+Make the Maven configuration valid and runnable.
+
+---
+
+## CONTAINER BUILD
+
+After the subtree update, the container workflow should run:
+
+```
+mvn clean verify
+```
+
+or the appropriate Maven command.
+
+Do not assume a specific AEM build unless the repository structure requires it.
+
+If this is an AEM Maven project, preserve the existing AEM Maven module structure.
+
+---
+
+## FAILURE BEHAVIOR
+
+The workflow must fail if:
+
+* source branch does not exist
+* authentication fails
+* subtree operation fails
+* Maven build fails
+* push fails
+* required variables are missing
+
+The workflow should produce useful logs without exposing secrets.
+
+---
+
+## DOCUMENTATION
+
+Create a README explaining:
+
+1. Architecture
+2. Repository responsibilities
+3. Branch mapping
+4. GitHub Actions workflow
+5. Git subtree strategy
+6. Authentication
+7. Required secrets
+8. Required GitHub permissions
+9. How a developer workflow works
+10. How to test the PoC
+11. How to add a second repository later
+12. Troubleshooting
+
+Include a diagram such as:
+
+```
+project1/develop
+      |
+      | GitHub Actions
+      v
+project-container/develop
+      |
+      | git subtree
+      v
+project-container/project1
+```
+
+and:
+
+```
+project1/main
+      |
+      | GitHub Actions
+      v
+project-container/main
+      |
+      | git subtree
+      v
+project-container/project1
+```
+
+---
+
+## IMPORTANT
+
+Before modifying files:
+
+1. Inspect the existing repository structure.
+2. Identify the current Maven structure.
+3. Identify whether GitHub Actions already exist.
+4. Do not overwrite existing workflows unnecessarily.
+5. Reuse existing conventions where possible.
+
+After implementing:
+
+1. Show every file created/modified.
+2. Show the final directory structure.
+3. Explain the workflow from developer merge to container update.
+4. Explain authentication.
+5. Explain why the chosen GitHub Actions trigger mechanism was selected.
+6. Explain how concurrency is handled.
+7. Explain how the design can scale from 2 repositories to 5+ repositories.
+8. Provide exact commands for testing locally where possible.
+
+Do not merely provide pseudocode.
+
+Implement the actual working files.
+
+---
+
+# 2. Claude Code prompt
+
+For **Claude Code**, I'd make it more implementation-oriented because Claude can inspect and modify the repository.
+
+You are working directly inside my GitHub repository.
+
+I want you to IMPLEMENT a GitHub Actions based CI/CD proof of concept.
+
+Do not just explain the solution. Inspect the repository, create/modify the required files, and implement the solution.
+
+Architecture:
+
+SOURCE REPOSITORY:
+
+```
+project1
+```
+
+CONTAINER REPOSITORY:
+
+```
+project-container
+```
+
+The source repository contains the application.
+
+The container repository aggregates the source repository using Git subtree.
+
+Required branch mapping:
+
+```
+project1/develop
+    ->
+project-container/develop/project1
+
+project1/main
+    ->
+project-container/main/project1
+```
+
+Business requirement:
+
+Whenever code is merged into `project1/develop`, automatically update the `project1/` subtree inside `project-container/develop`.
+
+Whenever code is merged into `project1/main`, automatically update the `project1/` subtree inside `project-container/main`.
+
+Use GitHub Actions.
+
+Do not use Git submodules.
+
+---
+
+## IMPLEMENTATION
+
+First inspect:
+
+* current directory structure
+* pom.xml
+* existing GitHub Actions
+* git configuration
+* README
+* existing scripts
+
+Then implement:
+
+SOURCE REPO:
+
+```
+.github/workflows/trigger-container.yml
+```
+
+CONTAINER REPO:
+
+```
+.github/workflows/update-subtree.yml
+```
+
+and:
+
+```
+scripts/update_subtree.sh
+```
+
+Use a GitHub-native cross-repository trigger.
+
+Evaluate `repository_dispatch` vs `workflow_dispatch` and choose the better mechanism.
+
+The source workflow should pass:
+
+```
+SOURCE_REPO
+SOURCE_BRANCH
+```
+
+The container workflow should receive those values.
+
+The container workflow must:
+
+1. checkout the appropriate container branch
+2. authenticate to GitHub
+3. fetch the source repository
+4. verify the source branch
+5. perform Git subtree add/pull
+6. update `project1/`
+7. run Maven validation
+8. commit only if there are changes
+9. push the container branch
+
+Use:
+
+```
+set -euo pipefail
+```
+
+in shell scripts.
+
+Do not use force push unless absolutely necessary.
+
+Add GitHub Actions concurrency protection so two subtree update workflows for the same branch cannot corrupt the container branch.
+
+Use least-privilege permissions.
+
+Do not expose credentials.
+
+---
+
+## BRANCH SAFETY
+
+Implement strict branch mapping:
+
+```
+develop -> develop
+
+main -> main
+```
+
+Reject anything else.
+
+Do not allow a `develop` source event to modify `main`.
+
+---
+
+## GIT SUBTREE
+
+Use:
+
+```
+project1/
+```
+
+as the subtree prefix.
+
+Decide whether `--squash` should be used.
+
+Prefer a simple maintainable implementation for this PoC.
+
+Document the choice.
+
+---
+
+## MAVEN
+
+Ensure the container POM includes the subtree module:
+
+```
+<module>project1</module>
+```
+
+Do not destroy any existing modules.
+
+If the repository already contains modules, preserve them.
+
+---
+
+## IMPORTANT
+
+Do not make architectural assumptions without inspecting the repository first.
+
+If an existing workflow conflicts with this design, explain the conflict and modify it safely.
+
+At the end:
+
+* show changed files
+* show final tree
+* explain workflow execution
+* explain required secrets
+* explain required GitHub permissions
+* explain how I can test it with a commit to develop
+* explain how to add repository 2 later
+
+Implement it now.
+
+---
+
+# 3. GitHub Copilot coding agent prompt
+
+For Copilot, I'd be especially explicit about **acceptance criteria**.
+
+Implement a GitHub Actions CI/CD proof of concept for a two-repository architecture.
+
+Repositories:
+
+* `project1` = source repository
+* `project-container` = parent/container repository
+
+Do not use Git submodules.
+
+Use Git subtree.
+
+## Objective
+
+When a PR is merged into:
+
+```
+project1/develop
+```
+
+GitHub Actions must automatically update:
+
+```
+project-container/develop/project1/
+```
+
+with the contents of:
+
+```
+project1/develop
+```
+
+Likewise:
+
+```
+project1/main
+```
+
+must update:
+
+```
+project-container/main/project1/
+```
+
+## Required branch mapping
+
+| Source           | Container                 |
+| ---------------- | ------------------------- |
+| project1/develop | project-container/develop |
+| project1/main    | project-container/main    |
+
+No other branches are supported for this PoC.
+
+## Required implementation
+
+In `project1` create:
+
+```
+.github/workflows/trigger-container.yml
+```
+
+In `project-container` create:
+
+```
+.github/workflows/update-subtree.yml
+```
+
+and:
+
+```
+scripts/update_subtree.sh
+```
+
+The source workflow must trigger the container workflow and pass:
+
+```
+SOURCE_REPO
+SOURCE_BRANCH
+```
+
+Use a GitHub-native cross-repository workflow trigger.
+
+Prefer the safest/simple mechanism available.
+
+The container workflow must:
+
+1. receive SOURCE_REPO and SOURCE_BRANCH
+2. checkout the matching container branch
+3. authenticate to GitHub
+4. verify the source repository exists
+5. verify the source branch exists
+6. update `project1/` using Git subtree
+7. avoid unnecessary commits
+8. run Maven validation
+9. push changes to the matching container branch
+
+## Git requirements
+
+Use:
+
+```
+git subtree
+```
+
+Do not use:
+
+```
+git submodule
+```
+
+Do not force-push unless there is no safer alternative.
+
+Protect against concurrent executions.
+
+Configure Git identity explicitly.
+
+Never print secrets.
+
+## Maven
+
+The container repository is a Maven parent project.
+
+Preserve existing modules.
+
+Ensure:
+
+```
+project1
+```
+
+is included as a Maven module.
+
+Run an appropriate Maven validation after the subtree update.
+
+Do not invent AEM-specific Maven commands unless the repository requires them.
+
+## Security
+
+Use least-privilege GitHub Actions permissions.
+
+Document required:
+
+* repository permissions
+* secrets
+* tokens
+* GitHub Actions settings
+
+Never hard-code a PAT/token.
+
+## Idempotency
+
+If the source repository is already synchronized, the workflow should:
+
+* detect that there are no changes
+* avoid creating an unnecessary commit
+* exit successfully
+
+## Error handling
+
+The workflow must fail clearly when:
+
+* required variables are missing
+* source branch doesn't exist
+* authentication fails
+* subtree fails
+* Maven fails
+* push fails
+
+## Documentation
+
+Update README with:
+
+* architecture
+* workflow
+* branch mapping
+* subtree structure
+* authentication
+* setup steps
+* testing instructions
+* troubleshooting
+* how to add repository 2 later
+
+## Acceptance criteria
+
+The implementation is complete only if all of these are true:
+
+1. A merge into `project1/develop` triggers the container workflow.
+2. Container `develop` is updated.
+3. `project-container/project1/` contains the latest source.
+4. A merge into `project1/main` updates container `main`.
+5. `develop` never updates `main`.
+6. `main` never updates `develop`.
+7. Re-running with no source changes creates no unnecessary commit.
+8. Concurrent runs are safely handled.
+9. Maven validation runs after subtree synchronization.
+10. No credentials are exposed.
+11. Existing Maven modules are not removed.
+12. README documents the complete setup.
+
+Before making changes, inspect the repository and existing workflows.
+
+After implementation, summarize:
+
+* files changed
+* workflow sequence
+* authentication model
+* required GitHub configuration
+* test procedure
+* limitations
+
+---
+
+# 4. Antigravity prompt
+
+For Antigravity/IDE agents, I'd give it a prompt that tells it to work across **both repositories**, because otherwise it may only modify the repository currently open in IntelliJ.
+
+Act as a senior GitHub Actions, Git and Maven engineer.
+
+I need you to build a working CI/CD proof of concept across TWO GitHub repositories.
+
+Repositories:
+
+```
+project1
+project-container
+```
+
+You may need to inspect both repositories.
+
+Do not assume they are currently configured correctly.
+
+---
+
+## ARCHITECTURE
+
+`project1` is the source/application repository.
+
+`project-container` is the parent deployment/container repository.
+
+The container repository aggregates `project1` using Git subtree.
+
+Desired structure:
+
+project-container
+|
+├── pom.xml
+├── project1/
+│   └── contents synchronized from project1 repository
+└── .github/
+└── workflows/
+
+Branch mapping:
+
+project1/develop
+|
+v
+project-container/develop
+|
+v
+project-container/project1/
+
+and:
+
+project1/main
+|
+v
+project-container/main
+|
+v
+project-container/project1/
+
+---
+
+## TRIGGER
+
+When a PR is merged into `project1/develop`, trigger the container synchronization.
+
+When a PR is merged into `project1/main`, trigger the container synchronization.
+
+Do not require a developer to manually run a pipeline.
+
+Use GitHub Actions.
+
+Use a cross-repository GitHub Actions trigger.
+
+Pass:
+
+```
+SOURCE_REPO
+SOURCE_BRANCH
+```
+
+---
+
+## CONTAINER SYNCHRONIZATION
+
+Inside `project-container`, implement:
+
+```
+.github/workflows/update-subtree.yml
+```
+
+and:
+
+```
+scripts/update_subtree.sh
+```
+
+The script should perform the equivalent of:
+
+```
+git subtree pull --prefix=project1 <source-url> <branch>
+```
+
+Use `--squash` if appropriate.
+
+Make the implementation idempotent.
+
+Do not create commits when there is nothing to synchronize.
+
+---
+
+## SECURITY
+
+Do not hard-code credentials.
+
+Determine whether the standard GitHub Actions `GITHUB_TOKEN` can provide the required permissions.
+
+If it cannot, use the smallest appropriate credential mechanism.
+
+Document exactly what needs to be configured in GitHub.
+
+Never print credentials.
+
+Use least privilege.
+
+---
+
+## CONCURRENCY
+
+Multiple commits may be merged into the source repository quickly.
+
+Protect the container branch from simultaneous update workflows.
+
+Use GitHub Actions concurrency and/or safe Git push/retry logic.
+
+Do not blindly force push.
+
+Do not overwrite unrelated container changes.
+
+---
+
+## MAVEN
+
+Inspect the existing Maven POM.
+
+Do not remove existing modules.
+
+Add `project1` as a module if appropriate.
+
+After subtree synchronization, execute an appropriate Maven validation.
+
+---
+
+## DELIVERABLES
+
+Create/update:
+
+project1:
+
+```
+.github/workflows/trigger-container.yml
+```
+
+project-container:
+
+```
+.github/workflows/update-subtree.yml
+scripts/update_subtree.sh
+README.md
+pom.xml if required
+```
+
+Do not create unnecessary files.
+
+---
+
+## TESTING
+
+Provide a test plan:
+
+TEST 1:
+
+Create a change in project1/develop.
+
+Merge it.
+
+Expected:
+
+project-container/develop/project1/
+
+contains the change.
+
+TEST 2:
+
+Create a change in project1/main.
+
+Merge it.
+
+Expected:
+
+project-container/main/project1/
+
+contains the change.
+
+TEST 3:
+
+Run synchronization again without changes.
+
+Expected:
+
+No unnecessary subtree commit.
+
+TEST 4:
+
+Attempt an unsupported branch.
+
+Expected:
+
+Workflow fails safely without modifying the container.
+
+TEST 5:
+
+Run two synchronization workflows close together.
+
+Expected:
+
+No corruption or accidental overwrite.
+
+---
+
+## FINAL RESPONSE
+
+After implementing, explain:
+
+1. What files changed.
+2. How the source workflow triggers the container workflow.
+3. How authentication works.
+4. How Git subtree works.
+5. How branch mapping works.
+6. How concurrency is handled.
+7. How to configure GitHub repository permissions/secrets.
+8. How to test the PoC.
+9. How to add repository 2 later.
+
+Do not just give me code snippets.
+
+Actually implement the solution in the repositories.
+
+---
+
+# 5. Prompt specifically for adding the second repository later
+
+Once the first PoC works, **don't ask the agent to redesign everything**. Give it this incremental prompt.
+
+The existing GitHub Actions architecture currently synchronizes:
+
+```
+project1
+    ->
+project-container/project1/
+```
+
+using Git subtree.
+
+I now want to add a second independent repository:
+
+```
+project2
+```
+
+The container should become:
+
+```
+project-container/
+├── project1/
+└── project2/
+```
+
+Branch mapping:
+
+```
+project1/develop -> project-container/develop/project1
+project1/main    -> project-container/main/project1
+
+project2/develop -> project-container/develop/project2
+project2/main    -> project-container/main/project2
+```
+
+Extend the existing implementation rather than redesigning it.
+
+Requirements:
+
+1. project1 and project2 must remain independent Git repositories.
+
+2. Neither repository should become a Git submodule.
+
+3. Both repositories must use Git subtree.
+
+4. A merge into project1/develop updates only:
+   project-container/develop/project1/
+
+5. A merge into project2/develop updates only:
+   project-container/develop/project2/
+
+6. A merge into project1/main updates only:
+   project-container/main/project1/
+
+7. A merge into project2/main updates only:
+   project-container/main/project2/
+
+8. Updating project1 must not overwrite project2.
+
+9. Updating project2 must not overwrite project1.
+
+10. Maven must include both modules where appropriate.
+
+11. Preserve existing workflows and security controls.
+
+12. Keep concurrency protection.
+
+13. Keep the solution idempotent.
+
+14. Do not introduce unnecessary third-party services.
+
+Inspect the existing implementation first.
+
+Then modify the minimum number of files necessary.
+
+At the end, show the resulting architecture and explain how adding project3 would work.
+
+---
+
+## One important change from your Bitbucket implementation
+
+I would **not ask the coding agent to blindly translate your `update_submodule.sh` line-for-line**.
+
+Your Bitbucket script has some things that I would simplify for GitHub.
+
+For example, this part:
+
+```bash
+git checkout -B "$SOURCE_BRANCH" FETCH_HEAD
+```
+
+combined with:
+
+```bash
+git push --force-with-lease
+```
+
+is more aggressive than I'd want for the new GitHub PoC.
+
+For GitHub, I'd aim for:
+
+```text
+Source repo
+    │
+    │ push/merge
+    ▼
+GitHub Actions
+    │
+    │ repository_dispatch
+    │ SOURCE_REPO=project1
+    │ SOURCE_BRANCH=develop
+    ▼
+Container workflow
+    │
+    ├── concurrency lock
+    │
+    ├── checkout develop
+    │
+    ├── git subtree pull
+    │
+    ├── mvn verify
+    │
+    └── git push origin develop
+```
+
+That gives you a much cleaner model.
+
+### Also, I'd separate these two concepts
+
+Your current Bitbucket terminology says **"submodule"**, but you're actually using **subtree**.
+
+For the GitHub project I'd consistently call it:
+
+> **source repository → container repository → Git subtree synchronization**
+
+rather than:
+
+> submodule update
+
+This will make the architecture much easier to explain to others.
+
+---
+
+## My recommended PoC
+
+I'd start with exactly this:
+
+```text
+                    GitHub
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+          ▼                         ▼
+     project1                  project-container
+     source repo               deployment repo
+          │                         │
+          │                         │
+     develop ────────────────────> develop
+          │                         │
+          │                    ┌────┴─────┐
+          │                    │ project1 │
+          │                    └──────────┘
+          │
+       main ─────────────────────> main
+                                    │
+                               ┌────┴─────┐
+                               │ project1 │
+                               └──────────┘
+```
+
+Then once that works, add `project2`:
+
+```text
+project1 ──────────┐
+                   │
+                   ├──> project-container/project1
+                   │
+project2 ──────────┤
+                   │
+                   └──> project-container/project2
+```
+
+That is a much better **PoC → production architecture path** than trying to migrate all of your current Bitbucket logic at once.

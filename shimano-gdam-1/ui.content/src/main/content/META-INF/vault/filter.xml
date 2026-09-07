@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspaceFilter version="1.0">
+    <filter root="/conf/shimano-gdam-1" mode="merge"/>
+    <filter root="/content/shimano-gdam-1" mode="merge"/>
+    <filter root="/content/dam/shimano-gdam-1" mode="merge">
+        <exclude pattern="/content/dam/shimano-gdam-1(/.*)?"/>
+        <include pattern="/content/dam/shimano-gdam-1/jcr:content(/.*)?"/>
+    </filter>
+    <filter root="/content/dam/shimano-gdam-1/asset.jpg" mode="merge"/>
+    <filter root="/content/experience-fragments/shimano-gdam-1" mode="merge"/>
+</workspaceFilter>
