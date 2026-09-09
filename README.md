@@ -10,7 +10,7 @@ This repository aggregates multiple source repositories (`shimano-gdam-1`, `shim
 +------------------------------------+        +------------------------------------+
 |       shimano-gdam-1               |        |       shimano-commons              |
 |  (Application Code)                |        |  (Shared Libraries / Core)         |
-|  Branches: develop | main          |        |  Branches: develop | main          |
+|  Branches: develop | main | stage  |        |  Branches: develop | main | stage  |
 +------------------------------------+        +------------------------------------+
                    │                                             │
                    │ Push / Merge                                │ Push / Merge
@@ -28,15 +28,18 @@ This repository aggregates multiple source repositories (`shimano-gdam-1`, `shim
                       |   Concurrency group per target branch  |
                       +----------------------------------------+
                                           │
-                                          │ 1. Checkout matching container branch
-                                          │ 2. Pull subtree locally (--squash)
-                                          │ 3. Quality Gate: mvn validate (5-10s)
-                                          │ 4. Push to remote with retry loop
+                                          │ 1. Match against ALLOWED_BRANCHES
+                                          │ 2. Check target branch exists in container (Governance)
+                                          │ 3. Check branch exists in source repo (Zero fallback)
+                                          │ 4. Pull subtree locally (--squash)
+                                          │ 5. Quality Gate: mvn validate (5-10s)
+                                          │ 6. Push to remote with retry & re-validation loop
                                           ▼
                       +────────────────────────────────────────+
                       |   Adobe Cloud Manager Webhook Deploy   |
                       |   Non-Prod -> develop                  |
-                      |   Production -> main                   |
+                      |   Stage    -> stage                    |
+                      |   Prod     -> main                     |
                       +────────────────────────────────────────+
 ```
 
@@ -48,59 +51,79 @@ This repository aggregates multiple source repositories (`shimano-gdam-1`, `shim
 shimano-container/
 ├── .github/
 │   └── workflows/
-│       └── update-subtree.yml      # Synchronization workflow & concurrency queue
+│       └── update-subtree.yml      # Subtree sync workflow & concurrency queue
 ├── scripts/
-│   └── update_subtree.sh           # Reusable subtree sync script & quality gate
+│   └── update_subtree.sh           # Sync script, quality gate & push retry loop
 ├── pom.xml                         # Aggregator root POM
-├── README.md                       # Architecture & setup guide
+├── README.md                       # Comprehensive architecture & operations guide
 ├── shimano-commons/                # Git subtree for shimano-commons
 └── shimano-gdam-1/                 # Git subtree for shimano-gdam-1
 ```
 
 ---
 
-## 3. Branch Mapping & Promotion Rules
+## 3. Branch Governance & Onboarding
 
-| Source Branch | Container Branch | Target Subtree Directory | Cloud Manager Target |
-| :--- | :--- | :--- | :--- |
-| `develop` | `develop` | `shimano-gdam-1/` or `shimano-commons/` | Non-Production Pipeline |
-| `main` | `main` | `shimano-gdam-1/` or `shimano-commons/` | Production Pipeline |
-| `stage` | `stage` | `shimano-gdam-1/` or `shimano-commons/` | Stage Pipeline |
-| `release/*` | `release/*` | `shimano-gdam-1/` or `shimano-commons/` | Release Pipeline |
+### Strict Branch Governance Model
+To ensure complete control over deployment targets and prevent rogue or unintended branches:
+- **No Automatic Branch Creation in Container**: If a new branch is pushed in a source repository (e.g. `release/v2.0` or `stage-2`), the container workflow **will not automatically create it**.
+- **Controlled Skipping**: The workflow logs a clear notice:
+  `⚠️ NOTICE: Target branch 'release/v2.0' does not exist in container repository. Subtree synchronization skipped.`
+- **Zero Fallback to `main`**: The pipeline **never falls back to `main`**. If a source branch does not exist on the remote source repo, it fails fast (`exit 1`) to eliminate any risk of code pollution.
 
-### Golden Rules for Development & Releases
-1. **Source Code & Components**:
-   - Write code, components, templates, and clientlibs **only in the source repositories** (`shimano-gdam-1`, `shimano-commons`).
-   - Merge PRs into `develop` in source repos $\rightarrow$ container `develop` updates automatically.
-   - Merge Release PRs into `main` in source repos $\rightarrow$ container `main` updates automatically.
-2. **Container Infrastructure**:
-   - Workflows, sync scripts, and root `pom.xml` are edited directly in `shimano-container`.
-3. **No Internal Branch Merges**:
-   - Never merge `develop` $\leftrightarrow$ `main` inside the container repository. Each container branch mirrors the corresponding source branch.
+### How to Onboard a New Branch to the Container
+When a Release Manager or Team Lead wants to sync a new release or stage branch:
+1. Create and push the branch in `shimano-container` (e.g. `git checkout develop && git checkout -b release/v2.0 && git push origin release/v2.0`).
+2. Any subsequent merges to `release/v2.0` in `shimano-gdam-1` or `shimano-commons` will now automatically sync into `shimano-container:release/v2.0`.
 
 ---
 
-## 4. Production Quality Gate (`mvn validate`)
+## 4. Dynamic Whitelist Configuration (`ALLOWED_BRANCHES`)
+
+The list of branches eligible for subtree synchronization is configurable via GitHub Variables without touching code:
+
+- **Location**: **Repository / Organization Settings $\rightarrow$ Secrets and variables $\rightarrow$ Actions $\rightarrow$ Variables**
+- **Variable Name**: `ALLOWED_BRANCHES`
+- **Default Value**: `main,develop,stage,stage-*,release/*,hotfix/*`
+
+Any branch not matching this comma-separated pattern list is cleanly skipped.
+
+---
+
+## 5. Production Quality Gate (`mvn validate`)
 
 Before any subtree update is pushed to GitHub, the sync script executes a lightweight **Maven Reactor Validation**:
 ```bash
 mvn -B validate
 ```
-- **Execution Time**: ~5 to 10 seconds.
-- **What it checks**: Validates all aggregator POMs, child module paths, XML syntax, and prevents duplicate artifact IDs or missing module directories (e.g. missing dispatcher folders).
-- **Quality Gate Protection**: If validation fails, the script **aborts immediately without pushing**, preventing broken commits from reaching Adobe Cloud Manager or other developers.
+- **Validation Time**: ~5 to 10 seconds.
+- **What it checks**: Validates all aggregator POMs, child module paths, XML syntax, and prevents duplicate artifact IDs or missing module directories.
+- **Fail-Safe Gate**: If validation fails, the script **aborts immediately without pushing**, guaranteeing that broken reactor code never reaches GitHub or triggers Cloud Manager.
 
 ---
 
-## 5. Concurrency & Race Condition Safety
+## 6. Concurrency & Push Retry Safety
 
 When multiple PRs are merged simultaneously across repositories:
-1. **GitHub Concurrency Queue**: `group: subtree-sync-${{ branch }}` with `cancel-in-progress: false` queues incoming events sequentially.
-2. **Push Retry Loop**: If a race condition occurs, `scripts/update_subtree.sh` retries pushing up to 3 times, merging remote changes non-interactively before retrying.
+1. **GitHub Concurrency Queue**: `group: subtree-sync-${{ env.SOURCE_BRANCH }}` with `cancel-in-progress: false` queues incoming sync events sequentially.
+2. **Push Retry & Re-Validation Loop**: If a rare race condition occurs during push:
+   - The script fetches the remote commit.
+   - Merges the remote state non-interactively.
+   - **Re-runs `mvn -B validate`** to guarantee reactor integrity after the merge.
+   - Retries the push (up to 3 attempts).
 
 ---
 
-## 6. How to Add a New Subtree Repository Later
+## 7. Security & Credentials Setup
+
+| Variable / Secret | Type | Location | Purpose |
+| :--- | :--- | :--- | :--- |
+| `CONTAINER_DISPATCH_TOKEN` | Secret | Org / Repo Secrets | GitHub Personal Access Token (PAT with `repo` scope) used to trigger dispatch events and authenticate subtree operations. |
+| `ALLOWED_BRANCHES` | Variable | Org / Repo Variables | Comma-separated list of whitelisted branch glob patterns. |
+
+---
+
+## 8. How to Add a New Subtree Repository Later
 
 To add a 3rd repository (e.g., `shimano-dealer`):
 1. Add `.github/workflows/trigger-container.yml` in `shimano-dealer` with secret `CONTAINER_DISPATCH_TOKEN`.
@@ -109,4 +132,4 @@ To add a 3rd repository (e.g., `shimano-dealer`):
    ```bash
    git subtree add --prefix=shimano-dealer https://github.com/prash04-glf/shimano-dealer.git develop --squash -m "Add shimano-dealer subtree"
    ```
-4. Commit and push. The automated pipeline will handle all future updates!
+4. Commit and push. All future updates will be fully automated!
