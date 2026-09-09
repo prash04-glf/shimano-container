@@ -42,7 +42,6 @@ jobs:
       - name: Checkout Container Repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.SOURCE_BRANCH }}
           token: ${{ secrets.CONTAINER_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
@@ -59,5 +58,6 @@ jobs:
           SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           GITHUB_TOKEN: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
           ORG_NAME: prash04-glf
+          ALLOWED_BRANCHES: ${{ vars.ALLOWED_BRANCHES || 'main,develop,stage,stage-*,release/*,hotfix/*' }}
         run: |
           bash scripts/update_subtree.sh
