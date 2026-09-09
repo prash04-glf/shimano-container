@@ -74,3 +74,12 @@ This repository is connected to the aggregator container [`shimano-container`](h
 ### Active Workflows
 * **`.github/workflows/pr-build.yml`**: Validates pull request builds with `mvn clean package -DskipTests` before merge.
 * **`.github/workflows/trigger-container.yml`**: Dispatches subtree synchronization events to `shimano-container` upon push to allowed branches.
+
+---
+
+## 4. Enforcing Status Checks to Block PR Merges
+
+To ensure PRs cannot be merged before the build succeeds:
+1. Go to **Settings** $\rightarrow$ **Branches** $\rightarrow$ **Add branch protection rule** for `develop` / `main`.
+2. Enable **Require status checks to pass before merging**.
+3. Select the check: **`Validate PR Build`**.
