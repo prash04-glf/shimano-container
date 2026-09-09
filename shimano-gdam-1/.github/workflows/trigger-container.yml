@@ -1,4 +1,4 @@
-name: Trigger Shimano Container Subtree Sync
+﻿name: Trigger Shimano Container Subtree Sync
 
 on:
   push:
@@ -6,7 +6,9 @@ on:
       - main
       - develop
       - stage
+      - 'stage-*'
       - 'release/**'
+      - 'hotfix/**'
   workflow_dispatch:
     inputs:
       target_branch:
@@ -18,6 +20,7 @@ jobs:
   trigger-container-sync:
     name: Dispatch Subtree Sync to shimano-container
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Validate GitHub Token
