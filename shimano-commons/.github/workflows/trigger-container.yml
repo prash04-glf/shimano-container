@@ -21,9 +21,38 @@ jobs:
     name: Dispatch Subtree Sync to shimano-container
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      ALLOWED_BRANCHES: ${{ vars.ALLOWED_BRANCHES || 'main,develop,stage,stage-*,release/*,hotfix/*' }}
 
     steps:
+      - name: Evaluate Allowed Branch Filter
+        id: branch-filter
+        run: |
+          TARGET_BRANCH="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_branch || github.ref_name }}"
+          echo "Target Branch    : $TARGET_BRANCH"
+          echo "Allowed Patterns : $ALLOWED_BRANCHES"
+
+          IS_ALLOWED=false
+          IFS=',' read -ra PATTERNS <<< "$ALLOWED_BRANCHES"
+          for pattern in "${PATTERNS[@]}"; do
+            pattern=$(echo "$pattern" | xargs)
+            if [[ "$TARGET_BRANCH" == $pattern ]]; then
+              IS_ALLOWED=true
+              break
+            fi
+          done
+
+          if [ "$IS_ALLOWED" = true ]; then
+            echo "is_allowed=true" >> "$GITHUB_OUTPUT"
+            echo "branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "✓ Branch '$TARGET_BRANCH' is whitelisted for container synchronization."
+          else
+            echo "is_allowed=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ Branch '$TARGET_BRANCH' does not match any pattern in ALLOWED_BRANCHES. Skipping dispatch."
+          fi
+
       - name: Validate GitHub Token
+        if: steps.branch-filter.outputs.is_allowed == 'true'
         env:
           CONTAINER_DISPATCH_TOKEN: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
         run: |
@@ -33,16 +62,8 @@ jobs:
             exit 1
           fi
 
-      - name: Determine Branch
-        id: branch-info
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=${{ github.event.inputs.target_branch }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Trigger Container Repository Dispatch
+        if: steps.branch-filter.outputs.is_allowed == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CONTAINER_DISPATCH_TOKEN }}
@@ -50,16 +71,17 @@ jobs:
           event-type: subtree_sync
           client-payload: >-
             {
-              "source_repo": "shimano-commons",
-              "source_branch": "${{ steps.branch-info.outputs.branch }}",
+              "source_repo": "${{ github.event.repository.name }}",
+              "source_branch": "${{ steps.branch-filter.outputs.branch }}",
               "commit_sha": "${{ github.sha }}",
               "actor": "${{ github.actor }}",
               "ref": "${{ github.ref }}"
             }
 
       - name: Report Dispatch Status
+        if: steps.branch-filter.outputs.is_allowed == 'true'
         run: |
           echo "Successfully dispatched subtree sync event to prash04-glf/shimano-container"
-          echo "Source Repository: shimano-commons"
-          echo "Source Branch: ${{ steps.branch-info.outputs.branch }}"
+          echo "Source Repository: ${{ github.event.repository.name }}"
+          echo "Source Branch: ${{ steps.branch-filter.outputs.branch }}"
           echo "Commit SHA: ${{ github.sha }}"
