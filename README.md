@@ -86,23 +86,41 @@ The list of branches eligible for subtree synchronization is configurable via Gi
 - **Variable Name**: `ALLOWED_BRANCHES`
 - **Default Value**: `main,develop,stage,stage-*,release/*,hotfix/*`
 
-Any branch not matching this comma-separated pattern list is cleanly skipped.
+Any branch not matching this comma-separated pattern list is cleanly skipped. Branch patterns support standard wildcards (`*` matches single segment or prefix, e.g. `stage-*`, `release/*`, `hotfix/*`). Additional patterns can be configured anytime via repository variables.
 
 ---
 
-## 5. Production Quality Gate (`mvn validate`)
+## 5. Build Strategy: Fast Quality Gate vs Cloud Manager Full Build
 
-Before any subtree update is pushed to GitHub, the sync script executes a lightweight **Maven Reactor Validation**:
-```bash
-mvn -B validate
-```
-- **Validation Time**: ~5 to 10 seconds.
-- **What it checks**: Validates all aggregator POMs, child module paths, XML syntax, and prevents duplicate artifact IDs or missing module directories.
-- **Fail-Safe Gate**: If validation fails, the script **aborts immediately without pushing**, guaranteeing that broken reactor code never reaches GitHub or triggers Cloud Manager.
+- **PR Validation / Fast Quality Gate (`mvn validate`)**:
+  - Validates POM syntax, dependency convergence, and aggregator reactor integrity in 5–10 seconds.
+  - Keeps PR and subtree synchronization fast and lightweight without duplicating full compilation overhead.
+- **Adobe Cloud Manager Pipeline (Full Build)**:
+  - Executes complete AEM maven packaging, frontend build (Node/NPM), code quality scanning, unit tests, integration tests, and environment deployments.
 
 ---
 
-## 6. Concurrency & Push Retry Safety
+## 6. How to Block PR Merges on Failed Build (GitHub Branch Protection)
+
+By default, GitHub Actions runs the PR workflow (`Validate PR Build`), but does not prevent merging unless **Branch Protection Rules** (or **Rulesets**) are explicitly turned on in GitHub repository settings.
+
+### Step-by-Step Guide to Enforce Merge Blocking:
+1. Go to your repository on GitHub (`shimano-commons`, `shimano-gdam-1`, or `shimano-container`).
+2. Navigate to **Settings** $\rightarrow$ **Branches** (under *Code and automation*).
+3. Click **Add branch protection rule** (or edit existing rule for `develop`, `main`, etc.).
+4. In **Branch name pattern**, enter `develop` (or `main`, `stage`).
+5. Check ✅ **Require a pull request before merging**.
+6. Check ✅ **Require status checks to pass before merging**.
+7. In the search box, search for and select:
+   - **`Validate PR Build`** (this matches the job name in `.github/workflows/pr-build.yml`).
+8. *(Optional but recommended)* Check ✅ **Require branches to be up to date before merging**.
+9. Click **Create** / **Save changes**.
+
+> **Result**: The green "Merge Pull Request" button will remain blocked/disabled until the `Validate PR Build` check runs and finishes with a green checkmark (`SUCCESS`).
+
+---
+
+## 7. Concurrency & Push Retry Safety
 
 When multiple PRs are merged simultaneously across repositories:
 1. **GitHub Concurrency Queue**: `group: subtree-sync-${{ env.SOURCE_BRANCH }}` with `cancel-in-progress: false` queues incoming sync events sequentially.
@@ -114,7 +132,7 @@ When multiple PRs are merged simultaneously across repositories:
 
 ---
 
-## 7. Security & Credentials Setup
+## 8. Security & Credentials Setup
 
 | Variable / Secret | Type | Location | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -123,7 +141,7 @@ When multiple PRs are merged simultaneously across repositories:
 
 ---
 
-## 8. How to Add a New Subtree Repository Later
+## 9. How to Add a New Subtree Repository Later
 
 To add a 3rd repository (e.g., `shimano-dealer`):
 1. Add `.github/workflows/trigger-container.yml` in `shimano-dealer` with secret `CONTAINER_DISPATCH_TOKEN`.
