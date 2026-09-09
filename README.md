@@ -1,4 +1,4 @@
-﻿# Shimano Commons - AEM Core & Shared Components
+﻿# Shimano Commons - AEM Core & Shared Components.
 
 This repository contains shared libraries, core utilities, and configurations used across Shimano AEM web applications.
 
