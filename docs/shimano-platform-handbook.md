@@ -26,48 +26,43 @@ Enterprise digital platforms must balance **team independence** with **centraliz
 ## 2. End-to-End Delivery Flow: From Developer to AEM Cloud
 
 ```mermaid
-flowchart LR
+flowchart TD
     %% Custom Visual Styling Classes
-    classDef devStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2.5px,color:#0C4A6E;
-    classDef sourceStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#4C1D95;
-    classDef gateStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2.5px,color:#78350F;
-    classDef hostStyle fill:#ECFDF5,stroke:#059669,stroke-width:3px,color:#064E3B;
-    classDef adobeStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2.5px,color:#881337;
+    classDef devStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0C4A6E;
+    classDef sourceStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#4C1D95;
+    classDef gateStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#78350F;
+    classDef hostStyle fill:#ECFDF5,stroke:#059669,stroke-width:2.5px,color:#064E3B;
+    classDef adobeStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#881337;
 
-    subgraph Step1["1. Local Development"]
-        direction TB
-        DEV["<b>💻 Developer</b><br/>• Writes AEM Code / HTL / OSGi<br/>• Tests on Local AEM SDK<br/>• Opens GitHub Pull Request"]
+    subgraph Row1 ["STAGE 1 & 2: Local Engineering & Source Codebases"]
+        direction LR
+        DEV["<b>💻 1. Local Developer</b><br/>• Writes AEM Code / HTL / OSGi<br/>• Validates on Local AEM SDK<br/>• Opens GitHub Pull Request"]
+        
+        subgraph REPOS ["2. Independent Source Repositories"]
+            direction TB
+            GDAM["<b>📦 shimano-gdam-1</b><br/>Application Code"]
+            COMMONS["<b>📦 shimano-commons</b><br/>Common Config"]
+            BIKES["<b>📦 shimano-bikes</b><br/>Future Applications"]
+        end
+        DEV -->|Push Code & Open PR| REPOS
     end
 
-    subgraph Step2["2. Source Repositories"]
-        direction TB
-        GDAM["<b>📦 shimano-gdam-1</b><br/>Application Code & Components"]
-        COMMONS["<b>📦 shimano-commons</b><br/>Common OSGi & Dispatcher Config"]
-        BIKES["<b>📦 Future Sub-Projects</b><br/>shimano-bikes (Applications)"]
+    subgraph Row2 ["STAGE 3 & 4: Quality Gate & Container Aggregator"]
+        direction LR
+        GATE["<b>🛡️ 3. Pre-Merge Quality Gate</b><br/>━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Maven Build</b> (clean package)<br/>• <i>SonarQube Analysis (Extensible)</i><br/>• <i>Veracode SAST (Extensible)</i><br/>• <b>Branch Protection:</b> Locks Merge"]
+        
+        CONTAINER["<b>⚡ 4. shimano-container (Subtree Engine)</b><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Tier 1:</b> Branch Concurrency Queue<br/>• <b>Safety Shield:</b> Whitelist & Governance<br/>• <b>Health Gate:</b> <code>mvn -B validate</code><br/>• <b>Tier 2:</b> Push Retry & Conflict Reconciliation"]
+        
+        GATE -->|PR Merged / Dispatch| CONTAINER
     end
 
-    subgraph Step3["3. PR Quality Gate"]
-        direction TB
-        GATE["<b>🛡️ Pre-Merge Verification</b><br/>━━━━━━━━━━━━━━━━━━━<br/>✅ <b>Maven Build</b> (<code>clean package</code>)<br/>🔍 <i>SonarQube (Extensible)</i><br/>🔒 <i>Veracode SAST (Extensible)</i><br/>━━━━━━━━━━━━━━━━━━━<br/><b>Branch Protection</b> locks merge<br/>until all status checks pass"]
+    subgraph Row3 ["STAGE 5: Adobe Experience Manager Cloud Platform"]
+        CLOUD["<b>☁️ 5. Adobe Cloud Manager Deployment Pipelines</b><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>🚀 <b>Dev Pipeline</b> (develop) &nbsp;&nbsp;|&nbsp;&nbsp; 🧪 <b>Stage Pipeline</b> (stage) &nbsp;&nbsp;|&nbsp;&nbsp; 🚢 <b>Production Pipeline</b> (main)<br/><i>Full Maven Reactor Packaging • Cloud Dispatcher & UI Tests • Zero-Downtime Rollout</i>"]
     end
 
-    subgraph Step4["4. Git Subtree Aggregator"]
-        direction TB
-        CONTAINER["<b>📦 shimano-container</b><br/>━━━━━━━━━━━━━━━━━━━<br/><b>⚡ Git Subtree Sync Engine</b><br/><code>git subtree pull --squash</code><br/>━━━━━━━━━━━━━━━━━━━<br/>• Concurrency Queue<br/>• 6-Point Subtree Safety Shield<br/>• <code>mvn validate</code> Health Gate<br/>• Push Retry & Conflict Reconciliation"]
-    end
+    Row1 -->|Trigger PR Checks| Row2
+    Row2 -->|Automated Webhook Deploy| Row3
 
-    subgraph Step5["5. Adobe Cloud Platform"]
-        direction TB
-        CLOUD["<b>☁️ Adobe Cloud Manager</b><br/>━━━━━━━━━━━━━━━━━━━<br/>🚀 <b>Dev Pipeline</b> (develop)<br/>🧪 <b>Stage Pipeline</b> (stage)<br/>🚢 <b>Prod Pipeline</b> (main)<br/>━━━━━━━━━━━━━━━━━━━<br/>• Full Maven Packaging<br/>• Cloud Dispatcher & UI Tests<br/>• Zero-Downtime Rollout"]
-    end
-
-    %% Step-by-Step Flow Connections
-    DEV -- "Push Code & Open PR" --> GDAM & COMMONS & BIKES
-    GDAM & COMMONS & BIKES -- "Triggers Automated Check" --> GATE
-    GATE -- "PR Approved & Merged" --> CONTAINER
-    CONTAINER -- "Automated Webhook Deploy" --> CLOUD
-
-    %% Apply Distinct Color Classes
     class DEV devStyle;
     class GDAM,COMMONS,BIKES sourceStyle;
     class GATE gateStyle;
@@ -112,7 +107,7 @@ Each source repository enforces automated validation on pull requests. The archi
 
 ### How Branch Protection Rules Enforce These Checks:
 
-In GitHub repository settings (**Settings $\rightarrow$ Branches $\rightarrow$ Add branch protection rule** for `develop` and `main`):
+In GitHub repository settings (**Settings → Branches → Add branch protection rule** for `develop` and `main`):
 
 1. ✅ **Require status checks to pass before merging**:
    - `Validate PR Build` *(Active: runs `mvn -B clean package -DskipTests`)*
@@ -401,7 +396,7 @@ When a synchronization workflow fails, follow this 3-step triage and remediation
 
 If an automated synchronization fails or needs to be manually triggered:
 
-1. Navigate to **`shimano-container`** on GitHub $\rightarrow$ Click the **Actions** tab.
+1. Navigate to **`shimano-container`** on GitHub → Click the **Actions** tab.
 2. Select **`Synchronize Subtree in Container`** from the left-hand workflow list.
 3. Click **Run workflow** (top right dropdown):
    - **Source Repository**: Select `shimano-gdam-1` or `shimano-commons`.
