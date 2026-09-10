@@ -23,9 +23,8 @@ concurrency:
 
 jobs:
   sync-subtree:
-    name: Subtree Sync & Quality Gate
+    name: Subtree Sync & Reactor Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
       - name: Resolve Parameters
@@ -42,17 +41,18 @@ jobs:
       - name: Checkout Container Repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.SOURCE_BRANCH }}
           token: ${{ secrets.CONTAINER_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Set up JDK 11
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
           cache: maven
 
-      - name: Execute Subtree Update & Quality Gate
+      - name: Execute Subtree Update Script
         env:
           SOURCE_REPO: ${{ env.SOURCE_REPO }}
           SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
@@ -60,4 +60,5 @@ jobs:
           ORG_NAME: prash04-glf
           ALLOWED_BRANCHES: ${{ vars.ALLOWED_BRANCHES || 'main,develop,stage,stage-*,release/*,hotfix/*' }}
         run: |
-          bash scripts/update_subtree.sh
+          chmod +x scripts/update_subtree.sh
+          ./scripts/update_subtree.sh
