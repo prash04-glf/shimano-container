@@ -28,42 +28,41 @@ Enterprise digital platforms must balance **team independence** with **centraliz
 ```mermaid
 flowchart TD
     %% Custom Visual Styling Classes
-    classDef devStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2.5px,color:#0C4A6E;
-    classDef sourceStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#4C1D95;
-    classDef gateStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2.5px,color:#78350F;
-    classDef hostStyle fill:#ECFDF5,stroke:#059669,stroke-width:3px,color:#064E3B;
-    classDef adobeStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2.5px,color:#881337;
+    classDef devStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2px,color:#0C4A6E;
+    classDef sourceStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2px,color:#4C1D95;
+    classDef gateStyle fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#78350F;
+    classDef hostStyle fill:#ECFDF5,stroke:#059669,stroke-width:2.5px,color:#064E3B;
+    classDef adobeStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2px,color:#881337;
 
-    subgraph Step1["1. Local Development"]
-        DEV["<b>💻 Developer</b><br/>• Writes AEM Code / HTL / OSGi<br/>• Tests on Local AEM SDK<br/>• Opens GitHub Pull Request"]
-    end
-
-    subgraph Step2["2. Source Repositories"]
+    subgraph Row1 ["STAGE 1 & 2: Local Engineering & Source Codebases"]
         direction LR
-        GDAM["<b>📦 shimano-gdam-1</b><br/>Application Code & Components"]
-        COMMONS["<b>📦 shimano-commons</b><br/>Common OSGi & Dispatcher Config"]
-        BIKES["<b>📦 Future Sub-Projects</b><br/>shimano-bikes (Applications)"]
+        DEV["<b>💻 1. Local Developer</b><br/>• Writes AEM Code / HTL / OSGi<br/>• Validates on Local AEM SDK<br/>• Opens GitHub Pull Request"]
+        
+        subgraph REPOS ["2. Independent Source Repositories"]
+            direction TB
+            GDAM["<b>📦 shimano-gdam-1</b><br/>Application Code"]
+            COMMONS["<b>📦 shimano-commons</b><br/>Common Config"]
+            BIKES["<b>📦 shimano-bikes</b><br/>Future Applications"]
+        end
+        DEV -->|Push Code & Open PR| REPOS
     end
 
-    subgraph Step3["3. PR Quality Gate"]
-        GATE["<b>🛡️ Pre-Merge Verification (Branch Protection)</b><br/>✅ <b>Maven Build</b> (clean package)<br/>🔍 <i>SonarQube (Extensible)</i> | 🔒 <i>Veracode SAST (Extensible)</i><br/><i>*Merge button locked until all required checks pass*</i>"]
+    subgraph Row2 ["STAGE 3 & 4: Quality Gate & Container Aggregator"]
+        direction LR
+        GATE["<b>🛡️ 3. Pre-Merge Quality Gate</b><br/>━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Maven Build</b> (clean package)<br/>• <i>SonarQube Analysis (Extensible)</i><br/>• <i>Veracode SAST (Extensible)</i><br/>• <b>Branch Protection:</b> Locks Merge"]
+        
+        CONTAINER["<b>⚡ 4. shimano-container (Subtree Engine)</b><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Tier 1:</b> Branch Concurrency Queue<br/>• <b>Safety Shield:</b> Whitelist & Governance<br/>• <b>Health Gate:</b> <code>mvn -B validate</code><br/>• <b>Tier 2:</b> Push Retry & Conflict Reconciliation"]
+        
+        GATE -->|PR Merged / Dispatch| CONTAINER
     end
 
-    subgraph Step4["4. Git Subtree Aggregator (shimano-container)"]
-        CONTAINER["<b>⚡ Git Subtree Sync Engine</b><br/><code>git subtree pull --prefix=repo remote branch --squash</code><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Tier 1:</b> GitHub Concurrency Queue (subtree-sync-branch)<br/>• <b>Safety Shield:</b> Whitelist, Branch Governance, Zero Silent Fallback<br/>• <b>Health Gate:</b> Pre-Push Reactor Validation (mvn -B validate)<br/>• <b>Tier 2:</b> Push Retry & Defensive Conflict Reconciliation"]
+    subgraph Row3 ["STAGE 5: Adobe Experience Manager Cloud Platform"]
+        CLOUD["<b>☁️ 5. Adobe Cloud Manager Deployment Pipelines</b><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>🚀 <b>Dev Pipeline</b> (develop) &nbsp;&nbsp;|&nbsp;&nbsp; 🧪 <b>Stage Pipeline</b> (stage) &nbsp;&nbsp;|&nbsp;&nbsp; 🚢 <b>Production Pipeline</b> (main)<br/><i>Full Maven Reactor Packaging • Cloud Dispatcher & UI Tests • Zero-Downtime Rollout</i>"]
     end
 
-    subgraph Step5["5. Adobe Cloud Platform (Cloud Manager)"]
-        CLOUD["<b>☁️ Adobe Cloud Manager Deployment Pipelines</b><br/>🚀 <b>Dev Pipeline</b> (develop) — Continuous Delivery<br/>🧪 <b>Stage Pipeline</b> (stage) — QA & Sandbox Verification<br/>🚢 <b>Prod Pipeline</b> (main) — Production Gate & Zero-Downtime Rollout<br/><i>*Full Maven Packaging, Cloud Dispatcher & UI Tests*</i>"]
-    end
+    Row1 -->|Trigger PR Checks| Row2
+    Row2 -->|Automated Webhook Deploy| Row3
 
-    %% Step-by-Step Flow Connections
-    DEV -->|"Push Code & Open PR"| Step2
-    Step2 -->|"Triggers Automated Check"| GATE
-    GATE -->|"PR Approved & Merged (repository_dispatch)"| CONTAINER
-    CONTAINER -->|"Automated Webhook Deploy"| CLOUD
-
-    %% Apply Distinct Color Classes
     class DEV devStyle;
     class GDAM,COMMONS,BIKES sourceStyle;
     class GATE gateStyle;

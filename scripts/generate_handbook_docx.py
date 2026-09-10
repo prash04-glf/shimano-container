@@ -44,7 +44,7 @@ def fetch_mermaid_image(mermaid_code, output_path):
             "mermaid": {
                 "theme": "default",
                 "themeVariables": {
-                    "fontSize": "18px",
+                    "fontSize": "16px",
                     "fontFamily": "Segoe UI, Arial, sans-serif"
                 }
             }
@@ -74,7 +74,6 @@ def clean_text_formatting(text):
 
 def build_word_document():
     md_path = "docs/shimano-platform-handbook.md"
-    docx_path = "docs/Shimano-Experience-Platform-Handbook.docx"
     
     os.makedirs("docs/images", exist_ok=True)
 
@@ -274,7 +273,6 @@ def build_word_document():
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p.paragraph_format.space_before = Pt(8)
                 p.paragraph_format.space_after = Pt(4)
-                # Maximize image display width across the document
                 doc.add_picture(img_path, width=Inches(6.8))
                 doc.add_paragraph().paragraph_format.space_after = Pt(6)
                 return
@@ -427,13 +425,25 @@ def build_word_document():
     if in_callout:
         flush_callout(callout_type, callout_lines)
 
-    try:
-        doc.save(docx_path)
-        print(f"Word document updated successfully at {docx_path} ({os.path.getsize(docx_path)} bytes)")
-    except PermissionError:
-        fallback_path = "docs/Shimano-Experience-Platform-Handbook-v2.docx"
-        doc.save(fallback_path)
-        print(f"Original file was open in Word. Saved updated version to {fallback_path} ({os.path.getsize(fallback_path)} bytes)")
+    saved = False
+    for candidate in [
+        "docs/Shimano-Experience-Platform-Handbook.docx",
+        "docs/Shimano-Experience-Platform-Handbook-v2.docx",
+        "docs/Shimano-Experience-Platform-Handbook-v3.docx",
+        "docs/Shimano-Experience-Platform-Handbook-Final.docx"
+    ]:
+        try:
+            doc.save(candidate)
+            print(f"SUCCESS: Saved updated Word document to {candidate} ({os.path.getsize(candidate)} bytes)")
+            saved = True
+            break
+        except PermissionError:
+            continue
+
+    if not saved:
+        fallback = "docs/Shimano-Experience-Platform-Handbook-New.docx"
+        doc.save(fallback)
+        print(f"SUCCESS: Saved updated Word document to {fallback} ({os.path.getsize(fallback)} bytes)")
 
 if __name__ == "__main__":
     build_word_document()
