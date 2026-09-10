@@ -1,4 +1,4 @@
-# Sample AEM project template - Commerce usage
+# Sample AEM project template - Commerce usage.
 
 This project template includes dependencies to [CIF Core Components](https://github.com/adobe/aem-core-cif-components) and  best practices for creating your own AEM commerce project.
 
