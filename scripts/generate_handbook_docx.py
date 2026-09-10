@@ -8,20 +8,20 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import nsdecls, qn
 
 def set_cell_background(cell, fill_hex):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{fill_hex}"/>')
     tcPr.append(shd)
 
-def set_cell_margins(cell, top=120, bottom=120, left=180, right=180):
+def set_cell_margins(cell, top=70, bottom=70, left=120, right=120):
     tcPr = cell._tc.get_or_add_tcPr()
     tcMar = parse_xml(f'<w:tcMar {nsdecls("w")}><w:top w:w="{top}" w:type="dxa"/><w:bottom w:w="{bottom}" w:type="dxa"/><w:left w:w="{left}" w:type="dxa"/><w:right w:w="{right}" w:type="dxa"/></w:tcMar>')
     tcPr.append(tcMar)
 
-def set_table_borders(table, color="D3D3D3"):
+def set_table_borders(table, color="CBD5E1"):
     tblPr = table._tbl.tblPr
     borders = parse_xml(
         f'<w:tblBorders {nsdecls("w")}>'
@@ -34,6 +34,14 @@ def set_table_borders(table, color="D3D3D3"):
         f'</w:tblBorders>'
     )
     tblPr.append(borders)
+
+def format_table_pagination(table):
+    # Repeat header on new pages and prevent rows from splitting awkwardly
+    for i, row in enumerate(table.rows):
+        trPr = row._tr.get_or_add_trPr()
+        trPr.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+        if i == 0:
+            trPr.append(parse_xml(f'<w:tblHeader {nsdecls("w")}/>'))
 
 def fetch_mermaid_image(mermaid_code, output_path):
     try:
@@ -74,7 +82,6 @@ def clean_text_formatting(text):
 
 def build_word_document():
     md_path = "docs/shimano-platform-handbook.md"
-    
     os.makedirs("docs/images", exist_ok=True)
 
     if not os.path.exists(md_path):
@@ -86,71 +93,81 @@ def build_word_document():
 
     doc = Document()
     
-    # Page setup - 0.75 inch margins for wider printable area
+    # Page setup - 0.65 inch margins (7.2 in printable width, 9.7 in printable height)
     for section in doc.sections:
-        section.top_margin = Inches(0.75)
-        section.bottom_margin = Inches(0.75)
-        section.left_margin = Inches(0.75)
-        section.right_margin = Inches(0.75)
+        section.top_margin = Inches(0.65)
+        section.bottom_margin = Inches(0.65)
+        section.left_margin = Inches(0.65)
+        section.right_margin = Inches(0.65)
         
     NAVY_HEX = "003366"
     BLUE_HEX = "005A9C"
-    DARK_TEXT = RGBColor(40, 40, 40)
+    DARK_TEXT = RGBColor(35, 35, 35)
     NAVY_COLOR = RGBColor(0, 51, 102)
     BLUE_COLOR = RGBColor(0, 90, 156)
-    CODE_COLOR = RGBColor(180, 40, 40)
+    CODE_COLOR = RGBColor(170, 30, 30)
     
+    # Base tight, elegant typography
     normal_style = doc.styles['Normal']
     normal_style.font.name = 'Calibri'
-    normal_style.font.size = Pt(10.5)
+    normal_style.font.size = Pt(10)
     normal_style.font.color.rgb = DARK_TEXT
-    normal_style.paragraph_format.line_spacing = 1.15
-    normal_style.paragraph_format.space_after = Pt(4)
+    normal_style.paragraph_format.line_spacing = 1.10
+    normal_style.paragraph_format.space_before = Pt(0)
+    normal_style.paragraph_format.space_after = Pt(2.5)
 
-    # Document Header Title Block
+    # Document Header Title Block - Compact & Professional
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_p.add_run("Shimano Experience Platform")
-    title_run.font.size = Pt(24)
+    title_run.font.size = Pt(21)
     title_run.font.bold = True
     title_run.font.color.rgb = NAVY_COLOR
-    title_p.paragraph_format.space_after = Pt(2)
+    title_p.paragraph_format.space_after = Pt(1)
 
     sub_p = doc.add_paragraph()
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub_run = sub_p.add_run("Multi-Repository Delivery Playbook & Architecture Guide")
-    sub_run.font.size = Pt(14)
+    sub_run.font.size = Pt(12.5)
     sub_run.font.color.rgb = BLUE_COLOR
     sub_run.font.bold = True
-    sub_p.paragraph_format.space_after = Pt(14)
+    sub_p.paragraph_format.space_after = Pt(6)
 
+    # Metadata callout box - Compact
     meta_tbl = doc.add_table(rows=1, cols=1)
     meta_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     cell = meta_tbl.cell(0, 0)
-    cell.width = Inches(7.0)
+    cell.width = Inches(7.2)
     set_cell_background(cell, "F0F4F8")
-    set_cell_margins(cell, top=140, bottom=140, left=200, right=200)
+    set_cell_margins(cell, top=90, bottom=90, left=140, right=140)
     
     meta_p = cell.paragraphs[0]
-    meta_p.paragraph_format.space_after = Pt(2)
+    meta_p.paragraph_format.space_after = Pt(1)
+    meta_p.paragraph_format.line_spacing = 1.05
     
     r1 = meta_p.add_run("Target Audience: ")
     r1.bold = True
-    meta_p.add_run("Development Teams, Tech Leads, Solution Architects, Security Engineers, & Leadership\n")
+    r1.font.size = Pt(9)
+    r1_t = meta_p.add_run("Development Teams, Tech Leads, Solution Architects, Security Engineers, & Leadership\n")
+    r1_t.font.size = Pt(9)
     
     r2 = meta_p.add_run("Platform: ")
     r2.bold = True
-    meta_p.add_run("Adobe Experience Manager as a Cloud Service (AEMaaCS), GitHub Actions, Git Subtree\n")
+    r2.font.size = Pt(9)
+    r2_t = meta_p.add_run("Adobe Experience Manager as a Cloud Service (AEMaaCS), GitHub Actions, Git Subtree\n")
+    r2_t.font.size = Pt(9)
     
     r3 = meta_p.add_run("Confluence Space: ")
     r3.bold = True
-    meta_p.add_run("Engineering > Architecture & Delivery > Platform Playbook")
+    r3.font.size = Pt(9)
+    r3_t = meta_p.add_run("Engineering > Architecture & Delivery > Platform Playbook")
+    r3_t.font.size = Pt(9)
     
     tcPr = cell._tc.get_or_add_tcPr()
-    tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="24" w:space="0" w:color="{NAVY_HEX}"/><w:top w:val="none"/><w:right w:val="none"/><w:bottom w:val="none"/></w:tcBorders>')
+    tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="20" w:space="0" w:color="{NAVY_HEX}"/><w:top w:val="none"/><w:right w:val="none"/><w:bottom w:val="none"/></w:tcBorders>')
     tcPr.append(tcBorders)
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+    doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
     lines = md_text.splitlines()
     in_code_block = False
@@ -180,33 +197,35 @@ def build_word_document():
         tbl = doc.add_table(rows=len(rows_data), cols=num_cols)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         set_table_borders(tbl, "CBD5E1")
+        format_table_pagination(tbl)
 
         for row_idx, row in enumerate(rows_data):
             for col_idx in range(num_cols):
                 c_text = row[col_idx] if col_idx < len(row) else ""
                 t_cell = tbl.cell(row_idx, col_idx)
-                set_cell_margins(t_cell, top=100, bottom=100, left=140, right=140)
+                set_cell_margins(t_cell, top=60, bottom=60, left=100, right=100)
                 t_p = t_cell.paragraphs[0]
-                t_p.paragraph_format.space_after = Pt(2)
-                t_p.paragraph_format.line_spacing = 1.1
+                t_p.paragraph_format.space_before = Pt(0)
+                t_p.paragraph_format.space_after = Pt(1.5)
+                t_p.paragraph_format.line_spacing = 1.05
 
                 if row_idx == 0:
                     set_cell_background(t_cell, NAVY_HEX)
                     run = t_p.add_run(re.sub(r'[\*`]', '', c_text))
                     run.bold = True
                     run.font.color.rgb = RGBColor(255, 255, 255)
-                    run.font.size = Pt(9.5)
+                    run.font.size = Pt(9)
                 else:
                     if row_idx % 2 == 1:
                         set_cell_background(t_cell, "F8FAFC")
                     else:
                         set_cell_background(t_cell, "FFFFFF")
                     
-                    render_inline_markdown(t_p, c_text, font_size=Pt(9))
+                    render_inline_markdown(t_p, c_text, font_size=Pt(8.5))
         
-        doc.add_paragraph().paragraph_format.space_after = Pt(6)
+        doc.add_paragraph().paragraph_format.space_after = Pt(3)
 
-    def render_inline_markdown(para, text, font_size=Pt(10.5)):
+    def render_inline_markdown(para, text, font_size=Pt(10)):
         text = clean_text_formatting(text)
         text = re.sub(r'<br\s*/?>', '\n', text)
         tokens = re.split(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)', text)
@@ -224,7 +243,7 @@ def build_word_document():
             elif tok.startswith('`') and tok.endswith('`'):
                 r = para.add_run(tok[1:-1])
                 r.font.name = 'Consolas'
-                r.font.size = Pt(font_size.pt * 0.92)
+                r.font.size = Pt(font_size.pt * 0.90)
                 r.font.color.rgb = CODE_COLOR
             else:
                 clean_tok = re.sub(r'<[^>]+>', '', tok)
@@ -237,28 +256,31 @@ def build_word_document():
         tbl = doc.add_table(rows=1, cols=1)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         cell = tbl.cell(0, 0)
-        cell.width = Inches(7.0)
+        cell.width = Inches(7.2)
         
         bg_hex = "F0FDF4" if c_type == "TIP" else ("FEF2F2" if c_type == "CAUTION" else ("FFFBEB" if c_type == "IMPORTANT" else "F0F7FF"))
         border_hex = "16A34A" if c_type == "TIP" else ("DC2626" if c_type == "CAUTION" else ("D97706" if c_type == "IMPORTANT" else BLUE_HEX))
         
         set_cell_background(cell, bg_hex)
-        set_cell_margins(cell, top=120, bottom=120, left=180, right=180)
+        set_cell_margins(cell, top=80, bottom=80, left=130, right=130)
         
         tcPr = cell._tc.get_or_add_tcPr()
-        tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="24" w:space="0" w:color="{border_hex}"/><w:top w:val="none"/><w:right w:val="none"/><w:bottom w:val="none"/></w:tcBorders>')
+        tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="18" w:space="0" w:color="{border_hex}"/><w:top w:val="none"/><w:right w:val="none"/><w:bottom w:val="none"/></w:tcBorders>')
         tcPr.append(tcBorders)
 
         p = cell.paragraphs[0]
-        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(1.5)
+        p.paragraph_format.line_spacing = 1.05
+        
         title_run = p.add_run(f"📌 {c_type}: ")
         title_run.bold = True
         title_run.font.color.rgb = NAVY_COLOR
-        title_run.font.size = Pt(10)
+        title_run.font.size = Pt(9.5)
         
         full_text = "\n".join(c_lines)
-        render_inline_markdown(p, full_text, font_size=Pt(9.5))
-        doc.add_paragraph().paragraph_format.space_after = Pt(4)
+        render_inline_markdown(p, full_text, font_size=Pt(9))
+        doc.add_paragraph().paragraph_format.space_after = Pt(3)
 
     def flush_code(c_lang, c_lines):
         nonlocal diagram_count
@@ -271,34 +293,44 @@ def build_word_document():
             if fetch_mermaid_image(mermaid_text, img_path):
                 p = doc.add_paragraph()
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                p.paragraph_format.space_before = Pt(8)
-                p.paragraph_format.space_after = Pt(4)
-                doc.add_picture(img_path, width=Inches(6.8))
-                doc.add_paragraph().paragraph_format.space_after = Pt(6)
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after = Pt(3)
+                p.paragraph_format.keep_with_next = True
+                
+                # Proportional image scaling to prevent accidental overflow
+                if diagram_count == 1:
+                    # Width 5.8 inches -> Height = 4.4 inches (fits comfortably on same page with header)
+                    doc.add_picture(img_path, width=Inches(5.8))
+                else:
+                    # Sequence diagram -> Width 5.4 inches -> Height = 3.8 inches
+                    doc.add_picture(img_path, width=Inches(5.4))
+                    
+                doc.add_paragraph().paragraph_format.space_after = Pt(3)
                 return
 
         tbl = doc.add_table(rows=1, cols=1)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         cell = tbl.cell(0, 0)
-        cell.width = Inches(7.0)
+        cell.width = Inches(7.2)
         set_cell_background(cell, "F8F9FA")
-        set_cell_margins(cell, top=100, bottom=100, left=140, right=140)
+        set_cell_margins(cell, top=60, bottom=60, left=100, right=100)
         
         tcPr = cell._tc.get_or_add_tcPr()
-        tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="6" w:space="0" w:color="E2E8F0"/><w:top w:val="single" w:sz="6" w:space="0" w:color="E2E8F0"/><w:right w:val="single" w:sz="6" w:space="0" w:color="E2E8F0"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="E2E8F0"/></w:tcBorders>')
+        tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/><w:top w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/><w:right w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/></w:tcBorders>')
         tcPr.append(tcBorders)
 
         p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(0)
-        p.paragraph_format.line_spacing = 1.05
+        p.paragraph_format.line_spacing = 1.02
         
         code_text = "\n".join(c_lines)
         code_text = clean_text_formatting(code_text)
         run = p.add_run(code_text)
         run.font.name = 'Consolas'
-        run.font.size = Pt(8.5)
+        run.font.size = Pt(8.0)
         run.font.color.rgb = RGBColor(30, 30, 30)
-        doc.add_paragraph().paragraph_format.space_after = Pt(6)
+        doc.add_paragraph().paragraph_format.space_after = Pt(3)
 
     lines_to_process = lines[7:]
     
@@ -362,11 +394,11 @@ def build_word_document():
         if line.startswith("## "):
             h_text = clean_text_formatting(line[3:].strip())
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(16)
-            p.paragraph_format.space_after = Pt(4)
+            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_after = Pt(2)
             p.paragraph_format.keep_with_next = True
             run = p.add_run(h_text)
-            run.font.size = Pt(15)
+            run.font.size = Pt(14)
             run.bold = True
             run.font.color.rgb = NAVY_COLOR
             continue
@@ -374,11 +406,11 @@ def build_word_document():
         if line.startswith("### "):
             h_text = clean_text_formatting(line[4:].strip())
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(12)
-            p.paragraph_format.space_after = Pt(3)
+            p.paragraph_format.space_before = Pt(8)
+            p.paragraph_format.space_after = Pt(2)
             p.paragraph_format.keep_with_next = True
             run = p.add_run(h_text)
-            run.font.size = Pt(12.5)
+            run.font.size = Pt(11.5)
             run.bold = True
             run.font.color.rgb = BLUE_COLOR
             continue
@@ -386,11 +418,11 @@ def build_word_document():
         if line.startswith("#### "):
             h_text = clean_text_formatting(line[5:].strip())
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(8)
-            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(1.5)
             p.paragraph_format.keep_with_next = True
             run = p.add_run(h_text)
-            run.font.size = Pt(11)
+            run.font.size = Pt(10.5)
             run.bold = True
             run.font.color.rgb = DARK_TEXT
             continue
@@ -403,9 +435,10 @@ def build_word_document():
             bullet_char = list_match.group(1)
             item_text = list_match.group(2)
             p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(3)
-            p.paragraph_format.line_spacing = 1.15
-            p.paragraph_format.left_indent = Inches(0.25)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.line_spacing = 1.08
+            p.paragraph_format.left_indent = Inches(0.2)
             
             b_run = p.add_run(f"{bullet_char} ")
             b_run.bold = True
@@ -415,7 +448,8 @@ def build_word_document():
 
         if line.strip():
             p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(4)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(2.5)
             render_inline_markdown(p, line.strip())
 
     if in_table:
@@ -430,20 +464,20 @@ def build_word_document():
         "docs/Shimano-Experience-Platform-Handbook.docx",
         "docs/Shimano-Experience-Platform-Handbook-v2.docx",
         "docs/Shimano-Experience-Platform-Handbook-v3.docx",
-        "docs/Shimano-Experience-Platform-Handbook-Final.docx"
+        "docs/Shimano-Experience-Platform-Handbook-Compact.docx"
     ]:
         try:
             doc.save(candidate)
-            print(f"SUCCESS: Saved updated Word document to {candidate} ({os.path.getsize(candidate)} bytes)")
+            print(f"SUCCESS: Saved tight presentation Word document to {candidate} ({os.path.getsize(candidate)} bytes)")
             saved = True
             break
         except PermissionError:
             continue
 
     if not saved:
-        fallback = "docs/Shimano-Experience-Platform-Handbook-New.docx"
+        fallback = "docs/Shimano-Experience-Platform-Handbook-Final.docx"
         doc.save(fallback)
-        print(f"SUCCESS: Saved updated Word document to {fallback} ({os.path.getsize(fallback)} bytes)")
+        print(f"SUCCESS: Saved tight presentation Word document to {fallback} ({os.path.getsize(fallback)} bytes)")
 
 if __name__ == "__main__":
     build_word_document()
