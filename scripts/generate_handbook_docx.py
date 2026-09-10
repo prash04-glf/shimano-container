@@ -1,14 +1,15 @@
 import os
 import re
+import json
 import base64
 import urllib.request
 import urllib.parse
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
-from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import nsdecls, qn
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 
 def set_cell_background(cell, fill_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -37,23 +38,46 @@ def set_table_borders(table, color="D3D3D3"):
 def fetch_mermaid_image(mermaid_code, output_path):
     try:
         clean_code = mermaid_code.strip()
-        graphbytes = clean_code.encode("utf-8")
-        base64_str = base64.b64encode(graphbytes).decode("ascii")
-        url = f"https://mermaid.ink/img/{base64_str}?bgColor=FFFFFF"
+        clean_code = clean_code.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+        payload = {
+            "code": clean_code,
+            "mermaid": {
+                "theme": "default",
+                "themeVariables": {
+                    "fontSize": "18px",
+                    "fontFamily": "Segoe UI, Arial, sans-serif"
+                }
+            }
+        }
+        json_bytes = json.dumps(payload).encode("utf-8")
+        base64_str = base64.b64encode(json_bytes).decode("ascii")
+        url = f"https://mermaid.ink/img/{base64_str}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = resp.read()
             with open(output_path, "wb") as f:
                 f.write(data)
+            print(f"Successfully generated diagram image: {output_path} ({len(data)} bytes)")
             return True
     except Exception as e:
         print(f"Error fetching mermaid image: {e}")
         return False
 
+def clean_text_formatting(text):
+    if not text:
+        return ""
+    text = text.replace(r"$\rightarrow$", "→")
+    text = text.replace(r"\rightarrow", "→")
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    return text
+
 def build_word_document():
     md_path = "docs/shimano-platform-handbook.md"
     docx_path = "docs/Shimano-Experience-Platform-Handbook.docx"
     
+    os.makedirs("docs/images", exist_ok=True)
+
     if not os.path.exists(md_path):
         print(f"Markdown file {md_path} not found.")
         return
@@ -63,23 +87,20 @@ def build_word_document():
 
     doc = Document()
     
-    # Page setup - 0.8 inch margins
+    # Page setup - 0.75 inch margins for wider printable area
     for section in doc.sections:
-        section.top_margin = Inches(0.8)
-        section.bottom_margin = Inches(0.8)
-        section.left_margin = Inches(0.8)
-        section.right_margin = Inches(0.8)
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
         
-    # Styles & Colors
     NAVY_HEX = "003366"
     BLUE_HEX = "005A9C"
     DARK_TEXT = RGBColor(40, 40, 40)
-    MUTED_TEXT = RGBColor(100, 100, 100)
     NAVY_COLOR = RGBColor(0, 51, 102)
     BLUE_COLOR = RGBColor(0, 90, 156)
     CODE_COLOR = RGBColor(180, 40, 40)
     
-    # Base normal font
     normal_style = doc.styles['Normal']
     normal_style.font.name = 'Calibri'
     normal_style.font.size = Pt(10.5)
@@ -104,11 +125,10 @@ def build_word_document():
     sub_run.font.bold = True
     sub_p.paragraph_format.space_after = Pt(14)
 
-    # Metadata callout box
     meta_tbl = doc.add_table(rows=1, cols=1)
     meta_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     cell = meta_tbl.cell(0, 0)
-    cell.width = Inches(6.8)
+    cell.width = Inches(7.0)
     set_cell_background(cell, "F0F4F8")
     set_cell_margins(cell, top=140, bottom=140, left=200, right=200)
     
@@ -127,17 +147,13 @@ def build_word_document():
     r3.bold = True
     meta_p.add_run("Engineering > Architecture & Delivery > Platform Playbook")
     
-    # Border for meta box
     tcPr = cell._tc.get_or_add_tcPr()
     tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}><w:left w:val="single" w:sz="24" w:space="0" w:color="{NAVY_HEX}"/><w:top w:val="none"/><w:right w:val="none"/><w:bottom w:val="none"/></w:tcBorders>')
     tcPr.append(tcBorders)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Parsing sections
-    # Split text into sections or process line-by-line
     lines = md_text.splitlines()
-    i = 0
     in_code_block = False
     code_lang = ""
     code_lines = []
@@ -146,16 +162,16 @@ def build_word_document():
     in_callout = False
     callout_type = ""
     callout_lines = []
+    diagram_count = 0
 
     def flush_table(tbl_lines):
         if not tbl_lines:
             return
-        # Parse markdown table
         rows_data = []
         for line in tbl_lines:
             if re.match(r'^\s*\|?\s*:?---', line):
                 continue
-            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            cells = [clean_text_formatting(c.strip()) for c in line.strip().strip('|').split('|')]
             if cells:
                 rows_data.append(cells)
         if not rows_data:
@@ -187,16 +203,13 @@ def build_word_document():
                     else:
                         set_cell_background(t_cell, "FFFFFF")
                     
-                    # Format markdown inside cell (bold, code, etc.)
                     render_inline_markdown(t_p, c_text, font_size=Pt(9))
         
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
     def render_inline_markdown(para, text, font_size=Pt(10.5)):
-        # Simple inline parser for **bold**, *italic*, `code`, <br/>
-        # Replace <br/> or <br> with newline
+        text = clean_text_formatting(text)
         text = re.sub(r'<br\s*/?>', '\n', text)
-        # Strip other HTML tags like <b>, </b>, <code>, </code>, <i>, </i>
         tokens = re.split(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)', text)
         for tok in tokens:
             if not tok:
@@ -215,7 +228,6 @@ def build_word_document():
                 r.font.size = Pt(font_size.pt * 0.92)
                 r.font.color.rgb = CODE_COLOR
             else:
-                # remove any remaining raw tags
                 clean_tok = re.sub(r'<[^>]+>', '', tok)
                 r = para.add_run(clean_tok)
                 r.font.size = font_size
@@ -226,7 +238,7 @@ def build_word_document():
         tbl = doc.add_table(rows=1, cols=1)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         cell = tbl.cell(0, 0)
-        cell.width = Inches(6.8)
+        cell.width = Inches(7.0)
         
         bg_hex = "F0FDF4" if c_type == "TIP" else ("FEF2F2" if c_type == "CAUTION" else ("FFFBEB" if c_type == "IMPORTANT" else "F0F7FF"))
         border_hex = "16A34A" if c_type == "TIP" else ("DC2626" if c_type == "CAUTION" else ("D97706" if c_type == "IMPORTANT" else BLUE_HEX))
@@ -250,30 +262,27 @@ def build_word_document():
         doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
     def flush_code(c_lang, c_lines):
+        nonlocal diagram_count
         if not c_lines:
             return
         if c_lang == "mermaid":
+            diagram_count += 1
             mermaid_text = "\n".join(c_lines)
-            img_name = f"mermaid_{abs(hash(mermaid_text)) % 10000}.png"
-            if fetch_mermaid_image(mermaid_text, img_name):
+            img_path = f"docs/images/diagram_{diagram_count}.png"
+            if fetch_mermaid_image(mermaid_text, img_path):
                 p = doc.add_paragraph()
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p.paragraph_format.space_before = Pt(8)
                 p.paragraph_format.space_after = Pt(4)
-                doc.add_picture(img_name, width=Inches(6.4))
+                # Maximize image display width across the document
+                doc.add_picture(img_path, width=Inches(6.8))
                 doc.add_paragraph().paragraph_format.space_after = Pt(6)
-                if os.path.exists(img_name):
-                    try:
-                        os.remove(img_name)
-                    except:
-                        pass
                 return
 
-        # Regular code block or ASCII diagram
         tbl = doc.add_table(rows=1, cols=1)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         cell = tbl.cell(0, 0)
-        cell.width = Inches(6.8)
+        cell.width = Inches(7.0)
         set_cell_background(cell, "F8F9FA")
         set_cell_margins(cell, top=100, bottom=100, left=140, right=140)
         
@@ -286,17 +295,16 @@ def build_word_document():
         p.paragraph_format.line_spacing = 1.05
         
         code_text = "\n".join(c_lines)
+        code_text = clean_text_formatting(code_text)
         run = p.add_run(code_text)
         run.font.name = 'Consolas'
         run.font.size = Pt(8.5)
         run.font.color.rgb = RGBColor(30, 30, 30)
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-    # Skip top metadata already rendered
     lines_to_process = lines[7:]
     
     for line in lines_to_process:
-        # Code fence check
         if line.startswith("```"):
             if in_code_block:
                 flush_code(code_lang, code_lines)
@@ -321,7 +329,6 @@ def build_word_document():
             code_lines.append(line)
             continue
 
-        # Callout check (> [!NOTE])
         callout_match = re.match(r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]', line)
         if callout_match:
             if in_table:
@@ -342,7 +349,6 @@ def build_word_document():
                 in_callout = False
                 callout_lines = []
 
-        # Table row check
         if re.match(r'^\s*\|.*\|\s*$', line):
             if not in_table:
                 in_table = True
@@ -355,9 +361,8 @@ def build_word_document():
                 in_table = False
                 table_lines = []
 
-        # Headings
         if line.startswith("## "):
-            h_text = line[3:].strip()
+            h_text = clean_text_formatting(line[3:].strip())
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(16)
             p.paragraph_format.space_after = Pt(4)
@@ -369,7 +374,7 @@ def build_word_document():
             continue
 
         if line.startswith("### "):
-            h_text = line[4:].strip()
+            h_text = clean_text_formatting(line[4:].strip())
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(12)
             p.paragraph_format.space_after = Pt(3)
@@ -381,7 +386,7 @@ def build_word_document():
             continue
 
         if line.startswith("#### "):
-            h_text = line[5:].strip()
+            h_text = clean_text_formatting(line[5:].strip())
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(8)
             p.paragraph_format.space_after = Pt(2)
@@ -392,11 +397,9 @@ def build_word_document():
             run.font.color.rgb = DARK_TEXT
             continue
 
-        # Horizontal Rule
         if line.strip() == "---":
             continue
 
-        # Bullet or numbered lists
         list_match = re.match(r'^\s*([0-9]+\.|\-|\*)\s+(.*)$', line)
         if list_match:
             bullet_char = list_match.group(1)
@@ -406,20 +409,17 @@ def build_word_document():
             p.paragraph_format.line_spacing = 1.15
             p.paragraph_format.left_indent = Inches(0.25)
             
-            # Bullet marker
             b_run = p.add_run(f"{bullet_char} ")
             b_run.bold = True
             b_run.font.color.rgb = NAVY_COLOR
             render_inline_markdown(p, item_text)
             continue
 
-        # Regular text paragraph
         if line.strip():
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(4)
             render_inline_markdown(p, line.strip())
 
-    # Final cleanup flushes
     if in_table:
         flush_table(table_lines)
     if in_code_block:
@@ -427,8 +427,13 @@ def build_word_document():
     if in_callout:
         flush_callout(callout_type, callout_lines)
 
-    doc.save(docx_path)
-    print(f"Word document created successfully at {docx_path} ({os.path.getsize(docx_path)} bytes)")
+    try:
+        doc.save(docx_path)
+        print(f"Word document updated successfully at {docx_path} ({os.path.getsize(docx_path)} bytes)")
+    except PermissionError:
+        fallback_path = "docs/Shimano-Experience-Platform-Handbook-v2.docx"
+        doc.save(fallback_path)
+        print(f"Original file was open in Word. Saved updated version to {fallback_path} ({os.path.getsize(fallback_path)} bytes)")
 
 if __name__ == "__main__":
     build_word_document()

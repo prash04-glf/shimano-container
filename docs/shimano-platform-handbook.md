@@ -26,7 +26,7 @@ Enterprise digital platforms must balance **team independence** with **centraliz
 ## 2. End-to-End Delivery Flow: From Developer to AEM Cloud
 
 ```mermaid
-flowchart LR
+flowchart TD
     %% Custom Visual Styling Classes
     classDef devStyle fill:#F0F9FF,stroke:#0284C7,stroke-width:2.5px,color:#0C4A6E;
     classDef sourceStyle fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#4C1D95;
@@ -35,37 +35,33 @@ flowchart LR
     classDef adobeStyle fill:#FFF1F2,stroke:#E11D48,stroke-width:2.5px,color:#881337;
 
     subgraph Step1["1. Local Development"]
-        direction TB
         DEV["<b>💻 Developer</b><br/>• Writes AEM Code / HTL / OSGi<br/>• Tests on Local AEM SDK<br/>• Opens GitHub Pull Request"]
     end
 
     subgraph Step2["2. Source Repositories"]
-        direction TB
+        direction LR
         GDAM["<b>📦 shimano-gdam-1</b><br/>Application Code & Components"]
         COMMONS["<b>📦 shimano-commons</b><br/>Common OSGi & Dispatcher Config"]
         BIKES["<b>📦 Future Sub-Projects</b><br/>shimano-bikes (Applications)"]
     end
 
     subgraph Step3["3. PR Quality Gate"]
-        direction TB
-        GATE["<b>🛡️ Pre-Merge Verification</b><br/>━━━━━━━━━━━━━━━━━━━<br/>✅ <b>Maven Build</b> (<code>clean package</code>)<br/>🔍 <i>SonarQube (Extensible)</i><br/>🔒 <i>Veracode SAST (Extensible)</i><br/>━━━━━━━━━━━━━━━━━━━<br/><b>Branch Protection</b> locks merge<br/>until all status checks pass"]
+        GATE["<b>🛡️ Pre-Merge Verification (Branch Protection)</b><br/>✅ <b>Maven Build</b> (clean package)<br/>🔍 <i>SonarQube (Extensible)</i> | 🔒 <i>Veracode SAST (Extensible)</i><br/><i>*Merge button locked until all required checks pass*</i>"]
     end
 
-    subgraph Step4["4. Git Subtree Aggregator"]
-        direction TB
-        CONTAINER["<b>📦 shimano-container</b><br/>━━━━━━━━━━━━━━━━━━━<br/><b>⚡ Git Subtree Sync Engine</b><br/><code>git subtree pull --squash</code><br/>━━━━━━━━━━━━━━━━━━━<br/>• Concurrency Queue<br/>• 6-Point Subtree Safety Shield<br/>• <code>mvn validate</code> Health Gate<br/>• Push Retry & Conflict Reconciliation"]
+    subgraph Step4["4. Git Subtree Aggregator (shimano-container)"]
+        CONTAINER["<b>⚡ Git Subtree Sync Engine</b><br/><code>git subtree pull --prefix=repo remote branch --squash</code><br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• <b>Tier 1:</b> GitHub Concurrency Queue (subtree-sync-branch)<br/>• <b>Safety Shield:</b> Whitelist, Branch Governance, Zero Silent Fallback<br/>• <b>Health Gate:</b> Pre-Push Reactor Validation (mvn -B validate)<br/>• <b>Tier 2:</b> Push Retry & Defensive Conflict Reconciliation"]
     end
 
-    subgraph Step5["5. Adobe Cloud Platform"]
-        direction TB
-        CLOUD["<b>☁️ Adobe Cloud Manager</b><br/>━━━━━━━━━━━━━━━━━━━<br/>🚀 <b>Dev Pipeline</b> (develop)<br/>🧪 <b>Stage Pipeline</b> (stage)<br/>🚢 <b>Prod Pipeline</b> (main)<br/>━━━━━━━━━━━━━━━━━━━<br/>• Full Maven Packaging<br/>• Cloud Dispatcher & UI Tests<br/>• Zero-Downtime Rollout"]
+    subgraph Step5["5. Adobe Cloud Platform (Cloud Manager)"]
+        CLOUD["<b>☁️ Adobe Cloud Manager Deployment Pipelines</b><br/>🚀 <b>Dev Pipeline</b> (develop) — Continuous Delivery<br/>🧪 <b>Stage Pipeline</b> (stage) — QA & Sandbox Verification<br/>🚢 <b>Prod Pipeline</b> (main) — Production Gate & Zero-Downtime Rollout<br/><i>*Full Maven Packaging, Cloud Dispatcher & UI Tests*</i>"]
     end
 
     %% Step-by-Step Flow Connections
-    DEV -- "Push Code & Open PR" --> GDAM & COMMONS & BIKES
-    GDAM & COMMONS & BIKES -- "Triggers Automated Check" --> GATE
-    GATE -- "PR Approved & Merged" --> CONTAINER
-    CONTAINER -- "Automated Webhook Deploy" --> CLOUD
+    DEV -->|"Push Code & Open PR"| Step2
+    Step2 -->|"Triggers Automated Check"| GATE
+    GATE -->|"PR Approved & Merged (repository_dispatch)"| CONTAINER
+    CONTAINER -->|"Automated Webhook Deploy"| CLOUD
 
     %% Apply Distinct Color Classes
     class DEV devStyle;
@@ -112,7 +108,7 @@ Each source repository enforces automated validation on pull requests. The archi
 
 ### How Branch Protection Rules Enforce These Checks:
 
-In GitHub repository settings (**Settings $\rightarrow$ Branches $\rightarrow$ Add branch protection rule** for `develop` and `main`):
+In GitHub repository settings (**Settings → Branches → Add branch protection rule** for `develop` and `main`):
 
 1. ✅ **Require status checks to pass before merging**:
    - `Validate PR Build` *(Active: runs `mvn -B clean package -DskipTests`)*
@@ -401,7 +397,7 @@ When a synchronization workflow fails, follow this 3-step triage and remediation
 
 If an automated synchronization fails or needs to be manually triggered:
 
-1. Navigate to **`shimano-container`** on GitHub $\rightarrow$ Click the **Actions** tab.
+1. Navigate to **`shimano-container`** on GitHub → Click the **Actions** tab.
 2. Select **`Synchronize Subtree in Container`** from the left-hand workflow list.
 3. Click **Run workflow** (top right dropdown):
    - **Source Repository**: Select `shimano-gdam-1` or `shimano-commons`.
